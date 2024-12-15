@@ -46,16 +46,26 @@ pdf() {
     # Argument provided, open the specified file
     # check if the file already has the .pdf extension
     if [[ $1 != *.pdf ]]; then
-      # check if $1 already has the dot in it
-      if [[ $1 != *. ]]; then
-        # if not, add it
-        printf "Adding .pdf extension to $1\n"
-        set -- "$1".pdf
-      else
-        # if yes, replace it with .pdf
+      # check if the last
+      # character of $1 is a dot
+      if [[ $1 == *. ]]; then
         printf "Replacing extension of $1 with .pdf\n"
         set -- "${1%.*}".pdf
       fi
+      # search for the corresponding pdf file
+      # get a list of pdf files in the current directory
+      pdfs=($(find . -maxdepth 1 -type f -name "*.pdf"))
+      # check if $1 is a substring of any of the pdf files
+      for pdf in "${pdfs[@]}"; do
+        if [[ $pdf == *"$1"* ]]; then
+          printf "Found $pdf\n"
+          sioyek "$pdf"
+          return
+        fi
+      done
+      printf "No pdf file found for $1\n"
+      sioyek
+      return
     fi
     printf "Opening $1\n"
     sioyek "$1"
