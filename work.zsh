@@ -70,10 +70,12 @@ choose() {
   echo "Choose one:"
   read user_choice
 
-  if ! [[ $user_choice =~ ^[0-9]+$ ]]; then
+  while ! [[ $user_choice =~ ^[0-9]+$ ]]; do
     echo "Not a number"
-    return
-  fi
+    # exit compeltely out of bash, not just this function
+    echo "Choose one:"
+    read user_choice
+  done
 
   chosen_course=$(echo "$substring_list" | sed -n "${user_choice}p")
   echo "Chosen substring: $chosen_course"
@@ -109,8 +111,7 @@ nvimopen() {
 
 
 work() {
-  base_dir=~/Documents/university/3_year/1_semester
-  mlnotes=~/Documents/university/MLnotes
+  base_dir=~/Documents/university/3_year/2_semester
 
   if [ "$1" = "h" ] || [ "$1" = "-h" ]; then
     filename="content.tex"
@@ -171,13 +172,6 @@ work() {
 
   if [ "$1" = "grr" ]; then
     server $1
-    return
-  fi
-
-  if [ "$1" = "ml" ]; then
-    cd $mlnotes
-    filename="content.tex"
-    nvimopen
     return
   fi
 
