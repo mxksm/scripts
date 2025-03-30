@@ -7,7 +7,11 @@ pdf() {
   #
   # Usage:
   # pdf [file]
-  
+
+  if [ -f "3" ]; then
+    rm 3
+  fi 
+
   if [ -z "$1" ]; then
     # No argument provided, find a pdf file in the current directory
     # and open it
@@ -24,8 +28,8 @@ pdf() {
     fi
     
     pdfs=(*.pdf)
-    printf "Found ${#pdfs[@]} pdf files\n"
-    printf "Files: ${pdfs} \n"
+#    printf "Found ${#pdfs[@]} pdf files\n"
+#    printf "Files: ${pdfs} \n"
 
     # if main.pdf exists, open it
     if [ -f "main.pdf" ]; then

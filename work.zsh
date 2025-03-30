@@ -100,11 +100,14 @@ nvimopen() {
     echo "File does not exist: $filename"
     return
   fi
+  # if file named 3 exists, remove it
+  if [ -f "3" ]; then
+    rm 3
+  fi
 
   nvim "$filename" \
       -c ':set filetype=tex' \
       -c ':VimtexCompile' \
-      -c ':term source ~/.zshrc && pdf && rm main\ ?*' \
       -c ':bnext'
 }
 
@@ -112,6 +115,9 @@ nvimopen() {
 
 work() {
   base_dir=~/Documents/university/3_year/2_semester
+  if [ -f "3" ]; then
+    rm 3
+  fi
 
   if [ "$1" = "h" ] || [ "$1" = "-h" ]; then
     filename="content.tex"
