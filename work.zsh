@@ -1,5 +1,4 @@
-
-newfolder() {
+create_new_hw_folder() {
   # If the first argument is -c, create a new homework folder 
   # with number one greater than the latest one
   # the number is always a 2 digit number (01, 02, etc.)
@@ -53,19 +52,18 @@ newfolder() {
 
   touch $filename
   pdflatex main.tex
-  nvimopen
+  open_file_with_nvim
   return
 }
 
-
-choose() {
-  # Lists directories (courses) and lets the user choose one
+choose_course() {
+  # Lists directories (courses) and lets the user choose_course one
   echo "Courses:"
   i=1
   while IFS= read -r line; do
     echo "$i: $line"
     i=$((i+1))
-  done <<< "$substring_list"
+  done <<< "$course_list"
 
   echo "Choose one:"
   read user_choice
@@ -77,32 +75,34 @@ choose() {
     read user_choice
   done
 
-  chosen_course=$(echo "$substring_list" | sed -n "${user_choice}p")
-  echo "Chosen substring: $chosen_course"
-  substring="$chosen_course"
+  chosen_course=$(echo "$course_list" | sed -n "${user_choice}p")
+  echo "Chosen course: $chosen_course"
+  course="$chosen_course"
 }
 
-server() {
-  srvr=$1 
-  if [ "$1" = "grr" ]; then
-    ssh mlavrenk@data.cs.purdue.edu
-  else
-    ssh -i ~/.ssh/id_rsa_purdue mlavrenk@scholar.rcac.purdue.edu
+open_file_with_nvim() {
+  # if file named 3 exists, remove it
+  if [ -f "3" ]; then
+    rm 3
   fi
-}
 
-nvimopen() {
   if [ ! -f "$filename" ]; then
     filename="main.tex"
   fi
 
-  if [ ! -f "$filename" ]; then
-    echo "File does not exist: $filename"
+  if [ ! -f "$filename" ] || [ $last_argument = "typst" ]; then
+    if [ -f "main.typ" ]; then 
+      filename="main.typ"
+    else
+      echo "File does not exist: $filename"
+      return
+    fi
+    # if filename is of type .typ, open it with another command
+    nvim "$filename" \
+        -c ':lua require("nvterm.terminal").send("typst watch main.typ", "horizontal")' \
+        -c ':lua vim.fn.jobstart({"zsh", "-c", "source ~/.zshrc && pdf main"}, {detach = true})' 
+
     return
-  fi
-  # if file named 3 exists, remove it
-  if [ -f "3" ]; then
-    rm 3
   fi
 
   nvim "$filename" \
@@ -111,125 +111,149 @@ nvimopen() {
       -c ':bnext'
 }
 
-
-
 work() {
-  base_dir=~/Documents/university/3_year/2_semester
+  semester_path=~/Documents/university/3_year/2_semester
   if [ -f "3" ]; then
     rm 3
   fi
 
-  if [ "$1" = "h" ] || [ "$1" = "-h" ]; then
+  last_argument="${@:$#}"
+
+  if [ "$1" = "-h" ]; then
     filename="content.tex"
-    if [ "$2" = "main" ] || [ "$2" = "m" ]; then
-      filename="main.tex"
-    fi
-    nvimopen
+    open_file_with_nvim
     return
   fi
 
-  if [ "$1" = "hm" ]; then
+  if [ "$1" = "-hm" ]; then
     filename="main.tex"
-    nvimopen
+    open_file_with_nvim
     return
   fi
 
-  if [ "$1" = "resume" ]; then
+  if [ "$1" = "-r" ]; then
     cd ~/Documents/resume/
     filename="resume.tex"
-    nvimopen
+    open_file_with_nvim
     return
   fi
 
-  if [ "$1" = "-cd" ] || [ "$1" = "cd" ]; then
+  if [ "$1" = "-grr" ]; then
+    ssh mlavrenk@data.cs.purdue.edu
+    return
+  fi
+
+  if [ "$1" = "-cd" ]; then
     if [ -z "$2" ]; then
-      cd $base_dir
+      cd $semester_path
     else
-      substring_list=$(ls -1 $base_dir | grep -v '^TA-')
-      substring=$(echo "$substring_list" | grep -i "$2")
+      course_list=$(ls -1 $semester_path | grep -v '^TA-')
+      course=$(echo "$course_list" | grep -i "$2")
 
-      if [ -z "$substring" ]; then
-        echo "No substring found"
-        substring_list=$(ls -1 $base_dir | grep -v '^TA-')
-        choose
+      if [ -z "$course" ]; then
+        echo "No course found"
+        course_list=$(ls -1 $semester_path | grep -v '^TA-')
+        choose_course
       fi
 
-      if [ $(echo "$substring" | wc -l) -gt 1 ]; then
-        echo "Multiple substrings found:"
-        substring_list="$substring"
-        choose
-        substring="$chosen_course"
+      if [ $(echo "$course" | wc -l) -gt 1 ]; then
+        echo "Multiple courses found:"
+        course_list="$course"
+        choose_course
+        course="$chosen_course"
       fi
 
-      sub="${base_dir}/${substring}/"
-      if [ -d "$sub" ]; then
-        cd "$sub"
+      course_path="${semester_path}/${course}/"
+      if [ -d "$course_path" ]; then
+        cd "$course_path"
       else
-        echo "Error with 1=cd: Directory does not exist: $sub"
+        echo "Error with 1=cd: Directory does not exist: $course_path"
+      fi
+
+      # now use $3, $4, ..., $n as course_pathfolders
+      if [ ! -z "$3" ]; then
+        course_path="${semester_path}/${course}"
+        for arg in "${@:3}"; do
+          course_path="${course_path}/$arg"
+        done
+        if [ -d "$course_path" ]; then
+          cd "$course_path"
+        else
+          echo "Error with 2=cd: Directory does not exist: $course_path"
+        fi
       fi
     fi
     return
   fi
-
-  if [ "$1" = "brr" ]; then
-    server $1
-    return
-  fi
-
-  if [ "$1" = "grr" ]; then
-    server $1
-    return
-  fi
-
-  #echo "First argument: $1"
-  #echo "Second argument: $2"
-  #echo "Third argument: $3"
 
   # When listing courses, exclude any that start with TA-
   if [ -z "$1" ]; then
-    substring_list=$(ls -1 $base_dir | grep -v '^TA-')
-    choose
+    course_list=$(ls -1 $semester_path | grep -v '^TA-')
+    choose_course
   elif [ "$1" = "-c" ] && [ -z "$2" ]; then
-    substring_list=$(ls -1 $base_dir | grep -v '^TA-')
-    choose
+    course_list=$(ls -1 $semester_path | grep -v '^TA-')
+    choose_course
   elif [ "$1" = "c" ] && [ -z "$2" ]; then
-    substring_list=$(ls -1 $base_dir | grep -v '^TA-')
-    choose
+    course_list=$(ls -1 $semester_path | grep -v '^TA-')
+    choose_course
   elif [ "$1" = "-c" ] || [ "$1" = "c" ]; then
-    substring_list=$(ls -1 $base_dir | grep -v '^TA-')
-    substring=$(echo "$substring_list" | grep -i "$2")
+    course_list=$(ls -1 $semester_path | grep -v '^TA-')
+    course=$(echo "$course_list" | grep -i "$2")
   else
-    substring_list=$(ls -1 $base_dir | grep -v '^TA-')
-    substring=$(echo "$substring_list" | grep -i "$1")
+    course_list=$(ls -1 $semester_path | grep -v '^TA-')
+    course=$(echo "$course_list" | grep -i "$1")
   fi
   
-  if [ -z "$substring" ]; then
-    echo "No substring found"
-    substring_list=$(ls -1 $base_dir | grep -v '^TA-')
-    choose
-    substring="$chosen_course"
+  if [ -z "$course" ]; then
+    echo "No course found"
+    course_list=$(ls -1 $semester_path | grep -v '^TA-')
+    choose_course
+    course="$chosen_course"
   fi
 
-  if [ $(echo "$substring" | wc -l) -gt 1 ]; then
-    echo "Multiple substrings found:"
-    substring_list="$substring"
-    choose
-    substring="$chosen_course"
+  if [ $(echo "$course" | wc -l) -gt 1 ]; then
+    echo "Multiple courses found:"
+    course_list="$course"
+    choose_course
+    course="$chosen_course"
   fi
 
-  sub="${base_dir}/${substring}/"
-  if [ -d "$sub" ]; then
-    cd "$sub"
+  course_path="${semester_path}/${course}/"
+#  # if the last argument is notes, go to the course and open notes directory instead
+  if [ "$2" = "-notes" ] || [ "$2" = "-n" ]; then
+    notes="${course}-notes"
+    if [ -d "$course_path" ]; then
+      cd "$course_path"
+      if [ ! -d "$notes" ]; then
+        mkdir "$notes"
+        echo "Error: open the vault inside Obsidian, it requires you to open it there the first time"
+        return
+      fi
+      cd "$notes"
+    else
+      echo "Error no course folder: Directory does not exist: $course_path"
+      return
+    fi
+    obsidian "$notes"
+    # if error occurs,
+    if [ $? -ne 0 ]; then
+      echo "Error: open the vault inside Obsidian, it requires you to open it there the first time"
+      return
+    fi
+
+    return
+  fi
+
+  if [ -d "$course_path" ]; then
+    cd "$course_path"
     if [ ! -d "hw" ]; then
       mkdir hw
     fi
     cd hw
   else
-    echo "Error no course folder: Directory does not exist: $sub"
+    echo "Error no course folder: Directory does not exist: $course_path"
     return
   fi
-
-  cd "$PWD"
 
   latest_hw=$(ls -d hw* 2>/dev/null | sort -n | tail -n 1)
 
@@ -237,16 +261,16 @@ work() {
 
   if [ "$latest_hw" = "hw" ]; then
     echo "No homework folders found"
-    newfolder
+    create_new_hw_folder
   fi
 
   if [ -z "$latest_hw" ] && [ "$1" != "-c" ]; then
     echo "No homework folders found"
-    newfolder
+    create_new_hw_folder
   fi
 
   if [ "$1" = "-c" ] || [ "$1" = "c" ]; then
-    newfolder
+    create_new_hw_folder
     return
   fi
 
@@ -262,12 +286,5 @@ work() {
   echo "Opening homework folder: $latest_hw"
   cd "$latest_hw"
 
-  if [ ! -f "$filename" ]; then
-    echo "File does not exist: $filename"
-    return
-  fi
-
-  nvimopen
+  open_file_with_nvim
 }
-
-
