@@ -1,0 +1,485 @@
+#!/bin/bash
+
+# Variables
+semester_path="/Users/maxinimus/Documents/university/3_year/2_semester"
+resume_path="/Users/maxinimus/Documents/resume"
+default_latex_file_to_edit="content.tex"
+fallback_latex_file="main.tex"
+default_typst_file_to_edit="main.typ"
+fallback_typst_file="template.typ"
+
+server_name="mlavrenk@data.cs.purdue.edu"
+
+course_list=$(ls -1 $semester_path | grep -v '^TA-')
+course=""
+
+remaining_args=()
+first_argument=""
+
+latest_hw=""
+
+file_to_edit="$default_typst_file_to_edit"
+fallback_file_to_edit="$fallback_typst_file"
+# Initialize default flag values
+help_flag=false
+create_flag=false
+change_dir_flag=false
+force_open_flag=false
+fallback_flag=false
+resume_flag=false
+grr_flag=false
+typst_flag=false
+latex_flag=false
+dir_semester=false
+
+# Verbose mode
+verbose=false
+
+prompt_choose_course() {
+  # Lists directories (courses) and lets the user choose one
+  echo "Courses:"
+  i=1
+  while IFS= read -r line; do
+    echo "$i: $line"
+    i=$((i+1))
+  done <<< "$course_list"
+
+  echo "Choose the course:"
+  read user_choice
+
+  while ! [[ $user_choice =~ ^[0-9]+$ ]]; do
+    echo "Not a number"
+    echo "Choose the course:"
+    read user_choice
+  done
+
+  course=$(echo "$course_list" | sed -n "${user_choice}p")
+  if [ -z "$course" ]; then
+    echo "Invalid choice. Please try again."
+    prompt_choose_course
+  fi
+  if [ "$verbose" = true ]; then
+    echo "Chosen course: $course"
+  fi
+
+  return 0;
+}
+
+choose_course() {
+  course=$(echo "$course_list" | grep -i "$first_argument")
+  if [ "$verbose" = true ]; then
+    echo "Course first_argument: $first_argument"
+    echo "Course found: $course"
+  fi
+
+  if [ -z "$course" ]; then
+    # If no course is found, prompt the user to choose a course
+    prompt_choose_course || { echo "Error prompting for course"; return 1; }
+  fi
+
+  if [ "$verbose" = true ]; then
+    echo "Course: $course"
+  fi
+  return 0;
+}
+
+# Individual handler functions
+handle_flag_create() {
+  # make it so that . is a valid argument, create a new directory here
+  choose_course || { echo "Error choosing course"; return 1; } 
+  cd "$semester_path/$course" || { echo "Error: Failed to change directory to $semester_path/$course"; return 1; }
+  cd "hw" || { echo "Error: Failed to change directory to hw"; return 1; }
+  get_latest_hw
+  previous_hw=$latest_hw
+  if [ -z "$latest_hw" ]; then
+    latest_hw="hw01"
+  else
+    latest_hw=$(echo $latest_hw | sed 's/hw//')
+    latest_hw=$(printf "hw%02d" $((10#$latest_hw + 1)))
+  fi
+
+  if [ "$verbose" = true ]; then
+    echo "Creating new homework folder: $latest_hw"
+  fi
+
+  mkdir "$latest_hw"
+  cd "$latest_hw"
+
+  if [[ $latest_hw = "hw01" ]]; then
+    if [ "$verbose" = true ]; then
+      echo "Copying $fallback_file_to_edit from home directory"
+    fi
+    cp "~/.$fallback_file_to_edit" $fallback_file_to_edit
+  else
+    if [ "$verbose" = true ]; then
+      echo "Copying $fallback_file_to_edit from $previous_hw"
+    fi
+    cp "../$previous_hw/$fallback_file_to_edit" $fallback_file_to_edit || { echo "Error copying $fallback_file_to_edit"; return 1; }
+
+    # Replace the homework number in the title
+    file=""
+    pattern=""
+    matched_line=""
+    if [ "$latex_flag" = true ]; then
+      touch $default_latex_file_to_edit
+
+      file=$fallback_latex_file
+      pattern="title{.* Homework .*}"
+      matched_line=$(grep -o "$pattern" "$file")
+    elif [ "$typst_flag" = true ]; then
+      cp "../$previous_hw/$default_typst_file_to_edit " $default_typst_file_to_edit || { echo "Error copying $default_typst_file_to_edit"; return 1; }
+
+      file=$default_typst_file_to_edit
+      pattern="title: \"Homework .*\","
+      matched_line=$(grep -o "$pattern" "$file")
+    else
+      echo "Error: Neither typst nor latex flag is set."
+      return 1
+    fi
+
+    if [ ! -z "$matched_line" ]; then
+      last_number=$(echo "$matched_line" | grep -o '[0-9]\+' | tail -n 1)
+      
+      if [ ! -z "$last_number" ]; then
+        new_number=$((last_number + 1))
+        reversed_matched_line=$(echo "$matched_line" | rev)
+        reversed_new_line=$(echo "$reversed_matched_line" | sed "s/$(echo $last_number | rev)/$(echo $new_number | rev)/" | rev)
+        new_line=$reversed_new_line
+
+        escaped_matched_line=$(echo "$matched_line" | sed 's/[\/&]/\\&/g')
+        escaped_new_line=$(echo "$new_line" | sed 's/[\/&]/\\&/g')
+
+        sed -i '' "s/${escaped_matched_line}/${escaped_new_line}/" "$file"
+      else
+        echo "Error: No number found to increment."
+        return 1
+      fi
+    else
+      echo "Error: The pattern was not found in the file."
+      return 1
+    fi
+  fi
+
+  return 0;
+}
+
+handle_flag_change_dir() {
+  # if argument is empty, just cd to the semester path
+  # if semester flag is set, cd to the semester path
+  if [ "$dir_semester" = true ]; then
+    cd "$semester_path" || { echo "Error: Failed to change directory to $semester_path"; return 1; }
+  fi
+  directory_to_cd="$first_argument"
+
+  if [ "$verbose" = true ]; then
+    echo "Changing directory to $directory_to_cd"
+  fi
+
+  cd "$directory_to_cd" || { echo "Error: Failed to change directory to $directory_to_cd"; return 1; }
+
+  return 0;
+}
+
+handle_flag_fallback() {
+  file_to_edit="$fallback_file_to_edit"
+}
+
+handle_flag_grr() {
+  ssh "$server_name" || { echo "Error: Failed to SSH into $server_name"; return 1; }
+  return 0;
+}
+
+handle_flag_typst() {
+  file_to_edit="$default_typst_file_to_edit"
+  fallback_file_to_edit="$fallback_typst_file"
+}
+
+handle_flag_latex() {
+  file_to_edit="$default_latex_file_to_edit"
+  fallback_file_to_edit="$fallback_latex_file"
+}
+
+open_file_with_nvim() {
+  # Check if the file exists
+  if [ ! -f "$file_to_edit" ]; then
+    if [ ! -f "$fallback_file_to_edit" ]; then
+      echo "Error: Neither $file_to_edit nor $fallback_file_to_edit exists."
+      return
+    fi
+    file_to_edit="$fallback_file_to_edit"
+  fi
+
+  if [ "$typst_flag" = true ]; then
+    nvim "$file_to_edit" \
+        -c ':lua require("nvterm.terminal").send("typst watch main.typ", "horizontal")' \
+        -c ':lua vim.fn.jobstart({"zsh", "-c", "source ~/.zshrc && pdf main"}, {detach = true})' 
+  fi
+
+  if [ "$latex_flag" = true ]; then
+    nvim "$file_to_edit" \
+        -c ':set filetype=tex' \
+        -c ':VimtexCompile' \
+        -c ':bnext'
+  fi
+
+  return 0;
+}
+
+get_latest_hw() {
+  # Get the latest homework folder
+  latest_hw=$(ls -d hw* 2>/dev/null | sort -n | tail -n 1)
+  if [ "$latest_hw" = "hw" ]; then
+    if [ "$verbose" = true ]; then
+      echo "No homework folders found"
+    fi
+    mkdir hw01
+    latest_hw="hw01"
+  fi
+  if [ "$verbose" = true ]; then
+    echo "Latest homework folder: $latest_hw"
+  fi
+
+  return 0;
+}
+
+change_directory_to_course_latest_hw() {
+  cd "$semester_path/$course" || { echo "Error: Failed to change directory to $semester_path/$course"; return 1; }
+  if [ ! -d "hw" ]; then
+    echo "Error: hw directory does not exist."
+    mkdir "hw" || { echo "Error: Failed to create hw directory"; return 1; }
+  fi
+  cd "hw" || { echo "Error: Failed to change directory to hw"; return 1; }
+  # if second argument is non-empty
+  if [ -n "$second_argument" ]; then
+    latest_hw=$(printf "hw%02d" $second_argument)
+    if [ "$verbose" = true ]; then
+      echo "Changing directory to $latest_hw"
+    fi
+    if [ ! -d "$latest_hw" ]; then
+      echo "Error: Homework folder $latest_hw does not exist."
+      return 1;
+    fi
+  else
+    get_latest_hw || { echo "Error getting latest homework"; return 1; }
+  fi
+
+  cd "$latest_hw" || { echo "Error: Failed to change directory to $latest_hw"; return 1; }
+  return 0;
+}
+
+# Handle flags
+handle_flags() {
+  # Call flag handlers and check logic
+  if [ "$help_flag" = true ]; then
+    echo "Help flag is set. Displaying help information."
+    # Display help information here
+    echo "Usage: script.sh [options] [argument 1] [argument 2]"
+    echo "Options:"
+    echo "  -h  Show help information"
+    echo "  -c  Create a new homework folder at the course specified by the argument"
+    echo "  -d  Change directory to the specified course"
+    echo "  -o  Force open the file. Used to open a file in the current directory. Can be used together with -d to both switch a directory and open the file"
+    echo "  -f  Use fallback file to edit instead of the default file"
+    echo "  -r  Open the resume directory. Can be used with -o to open the file in the resume directory"
+    echo "  -g  SSH into the server"
+    echo "  -t  Use Typst"
+    echo "  -l  Use LaTeX"
+    echo "  -s  Change directory to the semester path"
+    echo "  -v  Enable verbose mode"
+    echo "Argument:"
+    echo "  [argument 1]  The course name or path to change directory to"
+    echo "  [argument 2]  The homework number to change directory to"
+
+    return 0;
+  fi
+
+  # if both typst_flag and latex_flag are set, return an Error
+  if [ "$typst_flag" = true ] && [ "$latex_flag" = true ]; then
+    echo "Error: Both typst and latex flags cannot be set at the same time."
+    return 1
+  fi
+  # if both create_flag and change_dir_flag are set, return an Error
+  if [ "$create_flag" = true ] && [ "$change_dir_flag" = true ]; then
+    echo "Error: Both create and change_dir flags cannot be set at the same time."
+    return 1
+  fi
+  # if both change dir and resume flag are set, return an Error
+  if [ "$change_dir_flag" = true ] && [ "$resume_flag" = true ]; then
+    echo "Error: Both change_dir and resume flags cannot be set at the same time."
+    return 1
+  fi
+
+  if [ "$typst_flag" = true ]; then
+    handle_flag_typst
+  fi 
+  if [ "$latex_flag" = true ]; then
+    handle_flag_latex
+  fi
+
+  if $grr_flag; then
+    handle_flag_grr || { echo "Error in handle_flag_grr"; return 1; }
+    return 0;
+  fi
+
+  # could change resume flag to just use change dir but after changing argument
+  $change_dir_flag && { handle_flag_change_dir || { echo "Error in handle_flag_change_dir"; return 1; }; }
+
+  if $resume_flag; then
+    first_argument="$resume_path"
+    change_dir_flag=true
+    handle_flag_change_dir || { echo "Error in handle_flag_change_dir"; return 1; }
+  fi
+
+  if $create_flag; then
+    handle_flag_create || { echo "Error in handle_flag_create"; return 1; }
+  fi
+
+  # Load course and handle directory change
+  if [ "$force_open_flag" = false ] && [ "$change_dir_flag" = false ] && [ "$create_flag" = false ]; then
+    choose_course || { echo "Error choosing course"; return 1; } 
+    change_directory_to_course_latest_hw || { echo "Error changing directory to homework"; return 1; }
+  fi
+
+  # Check if typst flag is set and no .typ files are found
+  if [ "$typst_flag" = true ]; then
+    if [[ -z "$(find . -maxdepth 1 -type f -name '*.typ' -print -quit 2>/dev/null)" ]]; then
+      if [ "$verbose" = true ]; then
+        echo "No .typ files found, falling back to LaTeX."
+      fi
+      latex_flag=true
+      typst_flag=false
+    fi
+  fi
+
+  # Check if latex flag is set and no .tex files are found
+  if [ "$latex_flag" = true ]; then
+    if [[ -z "$(find . -maxdepth 1 -type f -name '*.tex' -print -quit 2>/dev/null)" ]]; then
+      if [ "$verbose" = true ]; then
+        echo "No .tex files found, falling back to Typst."
+      fi
+      typst_flag=true
+      latex_flag=false
+    fi
+  fi
+
+  # if neither typst_flag nor latex_flag is set, dynamically set the flag based on the file type
+  if [ "$typst_flag" = false ] && [ "$latex_flag" = false ]; then
+    if [[ -n "$(find . -maxdepth 1 -type f -name '*.typ' -print -quit 2>/dev/null)" ]]; then
+      if [ "$verbose" = true ]; then
+        echo "No flags set, defaulting to Typst."
+      fi
+      typst_flag=true
+    elif [[ -n "$(find . -maxdepth 1 -type f -name '*.tex' -print -quit 2>/dev/null)" ]]; then
+      if [ "$verbose" = true ]; then
+        echo "No flags set, defaulting to LaTeX."
+      fi
+      latex_flag=true
+    else
+      if [ "$change_dir_flag" = true ] && [ "$force_open_flag" = false ]; then
+        return 0;
+      fi
+      echo "Error: No .typ or .tex files found."
+      return 1;
+    fi
+  fi
+
+  if [ "$typst_flag" = true ]; then
+    handle_flag_typst
+  fi 
+  if [ "$latex_flag" = true ]; then
+    handle_flag_latex
+  fi
+
+  $fallback_flag && { handle_flag_fallback || { echo "Error in handle_flag_fallback"; return 1; }; }
+
+  return 0;
+}
+
+# Parse flags
+parse_flags() {
+  # Parse command-line flags
+  while getopts "hcdofrgtlsv" opt; do
+    case "$opt" in
+      h) help_flag=true ;;
+      c) create_flag=true ;;
+      d) change_dir_flag=true ;;
+      o) force_open_flag=true ;;
+      f) fallback_flag=true ;;
+      r) resume_flag=true ;;
+      g) grr_flag=true ;;
+      t) typst_flag=true ;;
+      l) latex_flag=true ;;
+      s) dir_semester=true ;;
+      v) verbose=true ;;
+      \?) echo "Invalid option"; return 1 ;;
+    esac
+  done
+
+  if [ "$verbose" = true ]; then
+    echo "Verbose mode is enabled."
+  fi
+
+  if [ "$verbose" = true ]; then
+    echo "Flags:"
+    echo "help_flag: $help_flag"
+    echo "create_flag: $create_flag"
+    echo "change_dir_flag: $change_dir_flag"
+    echo "force_open_flag: $force_open_flag"
+    echo "fallback_flag: $fallback_flag"
+    echo "resume_flag: $resume_flag"
+    echo "grr_flag: $grr_flag"
+    echo "typst_flag: $typst_flag"
+    echo "latex_flag: $latex_flag"
+    echo "dir_semester: $dir_semester"
+    echo "---------------------"
+  fi
+
+  shift $((OPTIND - 1))
+  remaining_args=("$@")
+  first_argument=${remaining_args[1]}
+  second_argument=${remaining_args[2]}
+
+  if [ "${#remaining_args[@]}" -gt 2 ]; then
+    echo "Error: More than two argument provided."
+    return 1
+  fi
+
+  # if second argument is non-empty and not a number, return an error
+  if [[ -n "$second_argument" && ! "$second_argument" =~ ^[0-9]+$ ]]; then
+    echo "Error: Second argument must be a number."
+    return 1
+  fi
+ 
+  if [ "$verbose" = true ]; then
+    echo "All arguments: ${remaining_args[@]}"
+    echo "First argument: $first_argument"
+    echo "Second argument: $second_argument"
+  fi
+
+}
+
+# Main logic
+main() {
+  # Parse command-line flags
+  parse_flags "$@" || { echo "Error parsing flags"; return 1; }
+
+  # Handle flags
+  handle_flags || { echo "Error handling flags"; return 1; }
+
+  if [ "$help_flag" = true ]; then
+    return 0
+  fi
+
+  # Last step, open the file with nvim
+  # open file unless change dir is true and force open flag is false
+  if [ "$change_dir_flag" = true ] && [ "$force_open_flag" = false ]; then
+    if [ "$verbose" = true ]; then
+      echo "Change dir flag is set to true and force open flag is set to false, not opening file"
+    fi
+    return 0
+  fi
+
+  open_file_with_nvim || { echo "Error opening file"; return 1; }
+}
+
+main "$@"
