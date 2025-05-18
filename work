@@ -278,8 +278,7 @@ open_file_with_nvim() {
   if [ "$latex_flag" = true ]; then
     nvim "$file_to_edit" \
         -c ':set filetype=tex' \
-        -c ':VimtexCompile' \
-        -c ':bnext'
+        -c ':VimtexCompile'
   fi
 
   return 0;

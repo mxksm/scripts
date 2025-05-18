@@ -45,4 +45,3 @@ mani() {
       echo "No file found in $latest/"
   fi
 }
-
