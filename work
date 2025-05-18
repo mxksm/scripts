@@ -136,16 +136,17 @@ class AcademicWorkflow:
         new_hw_num = latest_hw + 1
         new_hw_path = hw_dir / self.config['hw_format'].format(new_hw_num)
         
+        # Get previous homework path if exists
+        previous_hw_path = None
+        if latest_hw > 0:
+            previous_hw_path = hw_dir / self.config['hw_format'].format(latest_hw)
+        
         template_type = self.detect_template_type(course_path) or self.get_template_type(args)
-        self.create_template_files(new_hw_path, template_type)
+        self.create_template_files(new_hw_path, template_type, previous_hw_path)
         self.update_hw_number(new_hw_path, new_hw_num, template_type)
         
         print(f"Created new homework: {new_hw_path}")
-        
-        # Change to new homework directory
         os.chdir(new_hw_path)
-
-        # Open the newly created homework
         default_file = new_hw_path / self.file_config[template_type]['default']
         self.open_editor(default_file)
 
@@ -203,16 +204,28 @@ class AcademicWorkflow:
             return 'latex'
         return 'typst'  # Default
 
-    def create_template_files(self, target: Path, template_type: str):
+    def create_template_files(self, target: Path, template_type: str, previous_hw_path: Path = None):
         target.mkdir(exist_ok=True, parents=True)
         
-        for ftype in ['default', 'template']:
-            template = self.file_config[template_type][ftype]
-            src = self.config['templates'] / template
-            dest = target / template
+        # Copy default file from base templates
+        default_template = self.file_config[template_type]['default']
+        default_src = self.config['templates'] / default_template
+        default_dest = target / default_template
+        if not default_dest.exists():
+            shutil.copy(default_src, default_dest)
+        
+        # Handle template file - copy from previous homework if available
+        template_file = self.file_config[template_type]['template']
+        if previous_hw_path and (previous_hw_path / template_file).exists():
+            template_src = previous_hw_path / template_file
+        else:
+            template_src = self.config['templates'] / template_file
             
-            if not dest.exists():
-                shutil.copy(src, dest)
+        template_dest = target / template_file
+        if not template_dest.exists():
+            shutil.copy(template_src, template_dest)
+            if template_src.exists():
+                shutil.copystat(template_src, template_dest)
 
     def open_directory(self, path: str, args):
         base = self.config['semester_path'] if args.semester else Path.cwd()
