@@ -77,6 +77,17 @@ class AcademicWorkflow:
         else:
             self.open_directory(target, args)
 
+    def open_current_directory(self, args):
+        """Handle opening files in current working directory"""
+        current_dir = Path.cwd()
+        try:
+            file_to_open = self.resolve_file(current_dir, args)
+            self.open_editor(file_to_open)
+        except FileNotFoundError as e:
+            print(f"Error: {str(e)}")
+            # Optionally open editor anyway
+            self.open_editor(current_dir)
+
     def handle_default_operation(self, args):
         if args.course:
             course_path = self.find_course(args.course)
