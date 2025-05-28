@@ -10,7 +10,7 @@ from typing import List, Optional
 class AcademicWorkflow:
     def __init__(self):
         self.config = {
-            'semester_path': Path.home() / "Documents/university/3_year/2_semester",
+            'semester_path': Path.home() / "Documents/university/4_year/1_semester",
             'resume_path': Path.home() / "Documents/resume",
             'templates': Path.home() / ".templates",
             'editor': "nvim",
@@ -103,7 +103,10 @@ class AcademicWorkflow:
 
     def find_course(self, pattern: str) -> Path:
         courses = [d for d in self.config['semester_path'].iterdir() if d.is_dir()]
+        print('pattern:', pattern)
         matches = [c for c in courses if pattern.lower() in c.name.lower()]
+        print('all courses:', courses)
+        print('matches:', matches)
         
         if not matches:
             raise FileNotFoundError(f"No course matching '{pattern}'")
