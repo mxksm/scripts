@@ -18,8 +18,8 @@ class AcademicWorkflow:
         }
         
         self.file_config = {
-            'latex': {'default': 'main.tex', 'template': 'template.tex'},
-            'typst': {'default': 'main.typ', 'template': 'template.typ'}
+            'latex': {'main': 'main.tex', 'config': 'template.tex', 'support': []},
+            'typst': {'main': 'main.typ', 'config': 'config.typ', 'support': ['environments.typ', 'macros.typ', 'setup.typ']}
         }
 
     def run(self):
@@ -38,6 +38,7 @@ class AcademicWorkflow:
         parser.add_argument('-k', '--kit', metavar='FOLDER', help="Create template folder in CWD")
         parser.add_argument('-d', '--directory', help="Change directory only")
         parser.add_argument('-o', '--open', help="Change directory and open files")
+        parser.add_argument('-e', '--notes', help="Open the notes folder and edit")
         
         # File handling
         parser.add_argument('-f', '--file', help="Specify exact file to open")
@@ -64,11 +65,28 @@ class AcademicWorkflow:
                 self.change_directory(args.directory, args)
             elif args.open:
                 self.open_directory(args.open, args)
+            elif args.notes:
+                self.open_notes(args.notes, args)
             else:
                 self.handle_default_operation(args)
+
         except Exception as e:
             print(f"Error: {str(e)}")
             exit(1)
+
+    def open_notes(self, course_pattern: str, args):
+        """Open the notes folder for a course"""
+        if course_pattern == "TDA" or course_pattern == "tda":
+            tda_path = Path.home() / "Documents/university/TDA"
+            notes_path = tda_path / "notes"
+        else:
+            course_path = self.find_course(course_pattern)
+            notes_path = course_path / "notes"
+
+        if not notes_path.exists():
+            print(f"Notes don't exist")
+        
+        self.open_hw_folder(notes_path, args)
 
     def handle_resume(self, args):
         target = self.config['resume_path']
@@ -119,7 +137,7 @@ class AcademicWorkflow:
         if not hw_dir.exists():
             hw_dir.mkdir()
         
-        if hw_number:
+        if hw_number != None:
             return hw_dir / self.config['hw_format'].format(hw_number)
         
         existing_hw = sorted(hw_dir.glob("hw*"), key=self.hw_sort_key)
@@ -135,39 +153,39 @@ class AcademicWorkflow:
         course_path = self.find_course(course_pattern)
         hw_dir = course_path / "hw"
         
-        latest_hw = max((self.hw_sort_key(p) for p in hw_dir.glob("hw*")), default=0)
+        latest_hw = max((self.hw_sort_key(p) for p in hw_dir.glob("hw*")), default=-1)
         new_hw_num = latest_hw + 1
         new_hw_path = hw_dir / self.config['hw_format'].format(new_hw_num)
         
         # Get previous homework path if exists
         previous_hw_path = None
-        if latest_hw > 0:
+        if latest_hw >= 0:
             previous_hw_path = hw_dir / self.config['hw_format'].format(latest_hw)
         
-        template_type = self.detect_template_type(course_path) or self.get_template_type(args)
-        self.create_template_files(new_hw_path, template_type, previous_hw_path)
-        self.update_hw_number(new_hw_path, new_hw_num, template_type)
+        language = self.detect_language(course_path) or self.get_language(args)
+        self.create_template_files(new_hw_path, language, previous_hw_path)
+        self.update_hw_number(new_hw_path, new_hw_num, language)
         
         print(f"Created new homework: {new_hw_path}")
         os.chdir(new_hw_path)
-        default_file = new_hw_path / self.file_config[template_type]['default']
-        self.open_editor(default_file)
+        main_file = new_hw_path / self.file_config[language]['main']
+        self.open_editor(main_file)
 
-    def update_hw_number(self, hw_path: Path, hw_num: int, template_type: str):
-        """Updates homework number in the template template file"""
-        template_file = hw_path / self.file_config[template_type]['template']
+    def update_hw_number(self, hw_path: Path, hw_num: int, language: str):
+        """Updates homework number in the coinfig file"""
+        config_file = hw_path / self.file_config[language]['config']
         
-        if not template_file.exists():
+        if not config_file.exists():
             return
         
         # Get plain number without leading zeros
         display_num = str(hw_num)
         
-        with open(template_file, 'r') as f:
+        with open(config_file, 'r') as f:
             content = f.read()
         
         # Pattern matching for both LaTeX and Typst
-        if template_type == 'typst':
+        if language == 'typst':
             pattern = r'(#let title\s*=\s*"[^"]*Homework )\d+(")'
             replacement = fr'\g<1>{display_num}\2'
         else:  # latex
@@ -177,21 +195,27 @@ class AcademicWorkflow:
         new_content = re.sub(pattern, replacement, content)
         
         if new_content == content:
-            print(f"Warning: Could not find homework number in {template_file.name}")
-            return
-        
-        with open(template_file, 'w') as f:
+            print(f"Warning: updating homework number did not go through")
+
+        if language == 'typst':
+            pattern = r'(#let course\s*=\s*")[^"]*(")'
+            course_name = hw_path.parent.parent.name.upper()
+            replacement = fr'\g<1>{course_name} \2'
+
+        new_content = re.sub(pattern, replacement, new_content)
+
+        with open(config_file, 'w') as f:
             f.write(new_content)
 
     def create_template_kit(self, folder_name: str, args):
         target = Path.cwd() / folder_name
         target.mkdir(exist_ok=True)
         
-        template_type = self.get_template_type(args)
-        self.create_template_files(target, template_type)
+        language = self.get_language(args)
+        self.create_template_files(target, language)
         print(f"Created template kit: {target}")
 
-    def detect_template_type(self, course_path: Path) -> Optional[str]:
+    def detect_language(self, course_path: Path) -> Optional[str]:
         hw_dir = course_path / "hw"
         for p in reversed(sorted(hw_dir.glob("hw*"), key=self.hw_sort_key)):
             if (p / "main.typ").exists():
@@ -200,35 +224,73 @@ class AcademicWorkflow:
                 return 'latex'
         return None
 
-    def get_template_type(self, args) -> str:
+    def get_language(self, args) -> str:
         if args.typst:
             return 'typst'
         if args.latex:
             return 'latex'
-        return 'typst'  # Default
+        return 'typst'
 
-    def create_template_files(self, target: Path, template_type: str, previous_hw_path: Path = None):
+    def create_template_files(self, target: Path, language: str, previous_hw_path: Path = None):
         target.mkdir(exist_ok=True, parents=True)
         
-        # Copy default file from base templates
-        default_template = self.file_config[template_type]['default']
-        default_src = self.config['templates'] / default_template
-        default_dest = target / default_template
-        if not default_dest.exists():
-            shutil.copy(default_src, default_dest)
-        
-        # Handle template file - copy from previous homework if available
-        template_file = self.file_config[template_type]['template']
-        if previous_hw_path and (previous_hw_path / template_file).exists():
-            template_src = previous_hw_path / template_file
+        # get folder of template files
+        templates_folder = self.config['templates']
+        if language == 'typst':
+            templates_folder = templates_folder / 'typst'
         else:
-            template_src = self.config['templates'] / template_file
+            templates_folder = templates_folder / 'latex'
+
+        # Handle main file - copy from previous homework if available
+        main_file_name = self.file_config[language]['main']
+        if previous_hw_path and (previous_hw_path / main_file_name).exists():
+            main_src = previous_hw_path / main_file_name
+        else:
+            main_src = templates_folder / main_file_name
+
+        main_dest = target / main_file_name
+        if not main_dest.exists() and main_src.exists():
+            shutil.copy(main_src, main_dest)
             
-        template_dest = target / template_file
-        if not template_dest.exists():
-            shutil.copy(template_src, template_dest)
-            if template_src.exists():
-                shutil.copystat(template_src, template_dest)
+            # trim file after === content ===
+            with open(main_dest, "r") as f:
+                lines = f.readlines()
+
+            marker = ["// =======\n", "// CONTENT\n", "// =======\n"]
+            start = 0
+            for i in range(len(lines)):
+                if lines[i:i+3] == marker:
+                    start = i + 3
+                    break
+
+            if start == 0:
+                main_src = templates_folder / main_file_name
+                shutil.copy(main_src, main_dest)
+            else:
+                with open(main_dest, "w") as f:
+                    f.writelines(lines[:start])
+
+        # Handle template file - copy from previous homework if available
+        config_file_name = self.file_config[language]['config']
+        if previous_hw_path and (previous_hw_path / config_file_name).exists():
+            config_src = previous_hw_path / config_file_name
+        else:
+            config_src = templates_folder / config_file_name
+            
+        config_dest = target / config_file_name
+        if not config_dest.exists() and config_src.exists():
+            shutil.copy(config_src, config_dest)
+
+        # if typst template, copy ~/.templates/definitions.typ to .
+        for support_file_name in self.file_config[language]['support']:
+            if previous_hw_path and (previous_hw_path / support_file_name).exists():
+                support_src = previous_hw_path / support_file_name
+            else:
+                support_src = templates_folder / support_file_name
+
+            support_dest = target / support_file_name
+            if not support_dest.exists() and support_src.exists():
+                shutil.copy(support_src, support_dest)
 
     def open_directory(self, path: str, args):
         base = self.config['semester_path'] if args.semester else Path.cwd()
@@ -255,9 +317,9 @@ class AcademicWorkflow:
         
         # Check forced template type first
         if args.typst or args.latex:
-            template_type = 'typst' if args.typst else 'latex'
-            for f in [self.file_config[template_type]['default'],
-                      self.file_config[template_type]['template']]:
+            language = 'typst' if args.typst else 'latex'
+            for f in [self.file_config[language]['main'],
+                      self.file_config[language]['template']]:
                 candidate = path / f
                 if candidate.exists():
                     return candidate
