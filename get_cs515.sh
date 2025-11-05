@@ -9,9 +9,9 @@ timestamp() {
 }
 
 # Variables
-filename="cs588-textbook.pdf"
-url="https://kentq.s3.us-east-1.amazonaws.com/raf25.pdf"
-target_dir=~/Documents/university/4_year/1_semester/cs588/
+filename="cs515-textbook.pdf"
+url="https://www.cs.purdue.edu/homes/dgleich/cs515-2025/matcomp-book.pdf"
+target_dir=~/Documents/university/4_year/1_semester/cs515/
 
 # Change to Downloads directory
 cd ~/Downloads 2>/dev/null
