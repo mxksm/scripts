@@ -76,12 +76,12 @@ class AcademicWorkflow:
 
     def open_notes(self, course_pattern: str, args):
         """Open the notes folder for a course"""
-        if course_pattern == "TDA" or course_pattern == "tda":
-            tda_path = Path.home() / "Documents/university/TDA"
-            notes_path = tda_path / "notes"
-        else:
-            course_path = self.find_course(course_pattern)
-            notes_path = course_path / "notes"
+        # if course_pattern == "TDA" or course_pattern == "tda":
+        #     tda_path = Path.home() / "Documents/university/TDA"
+        #     notes_path = tda_path / "notes"
+        # else:
+        course_path = self.find_course(course_pattern)
+        notes_path = course_path / "notes"
 
         if not notes_path.exists():
             print(f"Notes don't exist")
