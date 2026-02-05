@@ -8,7 +8,7 @@ timestamp() {
     echo -n "[$(date '+%Y-%m-%d %H:%M:%S')]"
 }
 
-cd ~/Documents/university/tda/
+cd ~/Documents/university/4_year/
 
 git add .
 if [ $? -ne 0 ]; then

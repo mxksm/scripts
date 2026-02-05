@@ -128,6 +128,23 @@ class AcademicWorkflow:
         else:
             self.open_current_directory(args)
 
+    def handle_default_operation(self, args):
+        if args.course:
+            workflow_type = self.get_workflow_type(args)
+            course_path = self.find_course(args.course)
+            workflow_dir = course_path / self.workflow_types[workflow_type]['folder_name']
+
+            # If workflow folder exists but empty, create the first workflow
+            if not workflow_dir.exists() or not any(workflow_dir.iterdir()):
+                print(f"{workflow_type} folder is empty. Creating the first one...")
+                self.create_course_workflow(args.course, args)
+                return
+
+            workflow_path = self.resolve_workflow_path(course_path, args.workflow_number, workflow_type)
+            self.open_workflow_folder(workflow_path, args)
+        else:
+            self.open_current_directory(args)
+
     # ======================================= HELPER FUNCTIONS =======================================
 
     def update_course_in_file(self, content: str, course_name: str) -> str:
@@ -208,7 +225,7 @@ class AcademicWorkflow:
         """Resolve path for either homework or pso"""
         config = self.workflow_types[workflow_type]
         workflow_dir = course_path / config['folder_name']
-        
+
         if not workflow_dir.exists():
             workflow_dir.mkdir()
         
@@ -273,10 +290,9 @@ class AcademicWorkflow:
 
         if file_path.suffix == '.typ':
             editor_cmd += [
-                '-c', f'lua require("nvterm.terminal").send("typst watch {file_path.name}", "horizontal")',
                 '-c', f'lua vim.fn.jobstart({{"zsh", "-c", "source ~/.zshrc && pdf {file_stem}"}}, {{detach = true}})'
             ]
-        elif file_path.suffix == '.tex':
+        if file_path.suffix == '.tex':
             editor_cmd += [
                 '-c', 'set filetype=tex',
                 '-c', 'VimtexCompile'
