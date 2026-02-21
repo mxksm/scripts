@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple
+from datetime import datetime
 
 class AcademicWorkflow:
     def __init__(self):
@@ -303,7 +304,16 @@ class AcademicWorkflow:
     def get_compile_command(self, file_path: Path) -> List[str]:
         """Get the appropriate compile command for a file"""
         if file_path.suffix == '.typ':
-            return ["typst", "watch", file_path.name]
+            #return ["typst", "watch", file_path.name]
+            now = datetime.now().strftime("%Y %m %d %H %M %S")
+            return [
+                "typst",
+                "watch",
+                file_path.name,
+                "--input",
+                f"now={now}",
+            ]
+
         return ["latexmk", "-pdf", "-interaction=nonstopmode", file_path.name]
 
     # ======================================= DIRECTORY NAVIGATION =======================================
