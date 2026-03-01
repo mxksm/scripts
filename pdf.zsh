@@ -8,9 +8,15 @@ pdf() {
   # Usage:
   # pdf [file]
 
-  if [ -f "3" ]; then
-    rm 3
-  fi 
+#  if [ -f "3" ]; then
+#    rm 3
+#  fi 
+#
+  arguments=""
+  if [ "$1" = "new" ]; then
+    arguments="--new-instance"
+    shift
+  fi
 
   if [ -z "$1" ]; then
     # No argument provided, find a pdf file in the current directory
@@ -19,32 +25,34 @@ pdf() {
 
     # check if there are no pdf files in the current directory
     pdfs=($(find . -maxdepth 1 -type f -name "*.pdf"))
+
     
     # Check if no PDF files were found
     if [ ${#pdfs[@]} -eq 0 ]; then
       printf "No pdf files found in the current directory\n"
-      sioyek
+      sioyek $arguments
       return
     fi
     
     pdfs=(*.pdf)
 #    printf "Found ${#pdfs[@]} pdf files\n"
 #    printf "Files: ${pdfs} \n"
+#
 
     # if main.pdf exists, open it
     if [ -f "main.pdf" ]; then
       printf "Found main.pdf\n"
-      sioyek main.pdf
+      sioyek $arguments main.pdf
       return
     fi
 
     # otherwise open the first pdf file found
     if [ -z "$pdfs" ]; then
       printf "No pdf files found in the current directory\n"
-      sioyek
+      sioyek $arguments
     else
       printf "Opening ${pdfs[@]}\n"
-      sioyek "${pdfs[@]}"
+      sioyek $arguments "${pdfs[@]}"
     fi
   else
     # Argument provided, open the specified file
@@ -63,15 +71,15 @@ pdf() {
       for pdf in "${pdfs[@]}"; do
         if [[ $pdf == *"$1"* ]]; then
           printf "Found $pdf\n"
-          sioyek "$pdf"
+          sioyek $arguments "$pdf"
           return
         fi
       done
       printf "No pdf file found for $1\n"
-      sioyek
+      sioyek $arguments
       return
     fi
     printf "Opening $1\n"
-    sioyek "$1"
+    sioyek $arguments "$1"
   fi
 }

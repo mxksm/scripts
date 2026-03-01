@@ -65,6 +65,12 @@ class AcademicWorkflow:
         parser.add_argument('-d', '--directory', help="Change directory only")
         parser.add_argument('-o', '--open', help="Change directory and open files")
         parser.add_argument('-e', '--notes', help="Open the notes folder and edit")
+
+        parser.add_argument(
+            '-wd', '--window',
+            action='store_true',
+            help="Open PDF viewer in a new window (sioyek --new-instance)"
+        )
         
         # Workflow type selection
         workflow_group = parser.add_mutually_exclusive_group()
@@ -284,14 +290,15 @@ class AcademicWorkflow:
         
         raise FileNotFoundError(f"No valid files found in {path}")
 
-    def open_editor(self, file_path: Path):
+    def open_editor(self, file_path: Path, args=None):
         """Opens file in Neovim with exact command structure from original script"""
         editor_cmd = [self.config['editor'], str(file_path)]
         file_stem = file_path.stem  # Gets filename without extension
 
         if file_path.suffix == '.typ':
+            sioyek_flag = "new" if args and args.window else ""
             editor_cmd += [
-                '-c', f'lua vim.fn.jobstart({{"zsh", "-c", "source ~/.zshrc && pdf {file_stem}"}}, {{detach = true}})'
+                '-c', f'lua vim.fn.jobstart({{"zsh", "-c", "source ~/.zshrc && pdf {sioyek_flag} {file_stem}"}}, {{detach = true}})'
             ]
         if file_path.suffix == '.tex':
             editor_cmd += [
@@ -323,17 +330,17 @@ class AcademicWorkflow:
         current_dir = Path.cwd()
         try:
             file_to_open = self.resolve_file(current_dir, args)
-            self.open_editor(file_to_open)
+            self.open_editor(file_to_open, args)
         except FileNotFoundError as e:
             print(f"Error: {str(e)}")
             # Optionally open editor anyway
-            self.open_editor(current_dir)
+            self.open_editor(current_dir, args)
 
     def open_workflow_folder(self, workflow_path: Path, args):
         """Open a homework/pso folder and its main file"""
         os.chdir(workflow_path)
         file_to_open = self.resolve_file(workflow_path, args)
-        self.open_editor(file_to_open)
+        self.open_editor(file_to_open, args)
 
     def open_directory(self, path: str, args):
         """Open a directory and optionally a specific file"""
@@ -342,7 +349,7 @@ class AcademicWorkflow:
         os.chdir(target)
         
         if args.file:
-            self.open_editor(target / args.file)
+            self.open_editor(target / args.file, args)
         else:
             self.open_workflow_folder(target, args)
 
@@ -357,7 +364,7 @@ class AcademicWorkflow:
         """Handle resume-related operations"""
         target = self.config['resume_path']
         if args.file:
-            self.open_editor(target / args.file)
+            self.open_editor(target / args.file, args)
         else:
             self.open_directory(target, args)
 
@@ -391,7 +398,7 @@ class AcademicWorkflow:
         print(f"Created new {workflow_type}: {new_path}")
         os.chdir(new_path)
         main_file = new_path / self.file_config[language]['main']
-        self.open_editor(main_file)
+        self.open_editor(main_file, args)
 
     def update_workflow_number(self, workflow_path: Path, workflow_num: int, 
                              language: str, workflow_type: str):
