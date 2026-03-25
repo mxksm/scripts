@@ -1,3 +1,12 @@
+_run_sioyek() {
+  # Helper function to handle execution and redirection
+  if [ "$silence" = true ]; then
+    sioyek "$@" > /dev/null 2>&1
+  else
+    sioyek "$@"
+  fi
+}
+
 pdf() {
   # This is a script to open a pdf file in sioyek
   # If not argument is provided, it will open the first pdf file 
@@ -13,11 +22,16 @@ pdf() {
 #  fi 
 #
   arguments=""
+  silence=false
+  
   if [ "$1" = "new" ]; then
     arguments="--new-instance"
     shift
+  elif [ "$1" = "shut" ]; then
+    silence=true
+    shift
   fi
-
+  
   if [ -z "$1" ]; then
     # No argument provided, find a pdf file in the current directory
     # and open it
@@ -30,7 +44,7 @@ pdf() {
     # Check if no PDF files were found
     if [ ${#pdfs[@]} -eq 0 ]; then
       printf "No pdf files found in the current directory\n"
-      sioyek $arguments
+      _run_sioyek $arguments
       return
     fi
     
@@ -42,17 +56,17 @@ pdf() {
     # if main.pdf exists, open it
     if [ -f "main.pdf" ]; then
       printf "Found main.pdf\n"
-      sioyek $arguments main.pdf
+      _run_sioyek $arguments main.pdf
       return
     fi
 
     # otherwise open the first pdf file found
     if [ -z "$pdfs" ]; then
       printf "No pdf files found in the current directory\n"
-      sioyek $arguments
+      _run_sioyek $arguments
     else
       printf "Opening ${pdfs[@]}\n"
-      sioyek $arguments "${pdfs[@]}"
+      _run_sioyek $arguments "${pdfs[@]}"
     fi
   else
     # Argument provided, open the specified file
@@ -71,15 +85,15 @@ pdf() {
       for pdf in "${pdfs[@]}"; do
         if [[ $pdf == *"$1"* ]]; then
           printf "Found $pdf\n"
-          sioyek $arguments "$pdf"
+          _run_sioyek $arguments "$pdf"
           return
         fi
       done
       printf "No pdf file found for $1\n"
-      sioyek $arguments
+      _run_sioyek $arguments
       return
     fi
     printf "Opening $1\n"
-    sioyek $arguments "$1"
+    _run_sioyek $arguments "$1"
   fi
 }
