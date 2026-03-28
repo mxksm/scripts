@@ -13,17 +13,13 @@ pdf() {
   # found in the current directory or main.pdf if it exists
   # If there are no pdf files in the current directory, 
   # it will open sioyek without any arguments
-  #
+
   # Usage:
   # pdf [file]
 
-#  if [ -f "3" ]; then
-#    rm 3
-#  fi 
-#
   arguments=""
   silence=false
-  
+
   if [ "$1" = "new" ]; then
     arguments="--new-instance"
     shift
@@ -31,7 +27,7 @@ pdf() {
     silence=true
     shift
   fi
-  
+
   if [ -z "$1" ]; then
     # No argument provided, find a pdf file in the current directory
     # and open it
@@ -40,18 +36,17 @@ pdf() {
     # check if there are no pdf files in the current directory
     pdfs=($(find . -maxdepth 1 -type f -name "*.pdf"))
 
-    
     # Check if no PDF files were found
     if [ ${#pdfs[@]} -eq 0 ]; then
       printf "No pdf files found in the current directory\n"
       _run_sioyek $arguments
       return
     fi
-    
+
     pdfs=(*.pdf)
 #    printf "Found ${#pdfs[@]} pdf files\n"
 #    printf "Files: ${pdfs} \n"
-#
+
 
     # if main.pdf exists, open it
     if [ -f "main.pdf" ]; then
