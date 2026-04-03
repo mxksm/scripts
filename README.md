@@ -37,7 +37,7 @@ You can directly clone my pre-configured templates into your local Typst package
 ```bash
 # Clear the local folder if it exists, then clone the repository
 rm -rf ~/Library/Application\ Support/typst/packages/local
-git clone [https://github.com/mxksm/typst-templates](https://github.com/mxksm/typst-templates) ~/Library/Application\ Support/typst/packages/local
+git clone https://github.com/mxksm/typst-templates ~/Library/Application\ Support/typst/packages/local
 ```
 The script dynamically generates ```hw-num``` and ```course``` variables upon creation. To use them, simply import the ```meta.typ``` file in one of the template files.
 
