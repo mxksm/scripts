@@ -61,7 +61,7 @@ work init -t notes 580
 ```
 
 ### Open an Existing Project (`open`)
-Intelligently finds the target, opens the `main.typ` in Neovim, and fires off a background Zsh compilation/PDF job.
+Intelligently finds the target, opens the `main.typ` (or `main.tex`) in Neovim, and fires off a background Zsh compilation/PDF job.
 
 ```bash
 # Open the latest homework for CS525

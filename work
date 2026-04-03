@@ -74,49 +74,64 @@ class Scaffolder(AcademicEnvironment):
                 # We use hw_num here since your template expects it!
                 f.write(f'#let hw_num = {number}\n')
 
-    def init_workflow(self, course_pattern: str, workflow_type: str):
+    def init_workflow(self, target_name: str, workflow_type: str, is_local: bool = False):
         config = WORKFLOWS[workflow_type]
-        course_path = self.find_course(course_pattern)
-        workflow_dir = course_path / config['folder_name']
-
-        target_dir = workflow_dir
-        current_num = None
-
-        if config['auto_increment']:
-            # We only need to ensure the parent directory exists if we are searching it for previous numbers
-            workflow_dir.mkdir(exist_ok=True)
+        
+        # ==========================================
+        # LOCAL MODE (Standalone Folder in CWD)
+        # ==========================================
+        if is_local:
+            target_dir = Path.cwd() / target_name
+            course_name = target_name  # Use the folder name as the course name for meta.typ
+            current_num = None         # No auto-incrementing for standalone folders
             
-            # Find the latest number
-            existing = [d for d in workflow_dir.iterdir() if d.is_dir() and d.name.startswith(config['prefix'])]
-            
-            latest = 0
-            for d in existing:
-                try:
-                    num = int(d.name.replace(config['prefix'], ''))
-                    latest = max(latest, num)
-                except ValueError:
-                    continue
-                    
-            current_num = latest + 1
-            target_dir = workflow_dir / f"{config['prefix']}{current_num:02d}"
+            if target_dir.exists() and any(target_dir.iterdir()):
+                print(f"Directory already exists and is not empty: {target_dir}")
+                return target_dir
 
-        # Smarter check: Only skip if the folder exists AND actually has files in it.
-        # This allows typst init to populate an existing but empty directory.
-        if target_dir.exists() and any(target_dir.iterdir()):
-            print(f"Directory already exists and is not empty: {target_dir}")
-            return target_dir
+        # ==========================================
+        # COURSE MODE (University Semester Logic)
+        # ==========================================
+        else:
+            course_path = self.find_course(target_name)
+            workflow_dir = course_path / config['folder_name']
+            course_name = course_path.name
 
+            target_dir = workflow_dir
+            current_num = None
+
+            if config['auto_increment']:
+                workflow_dir.mkdir(exist_ok=True)
+                existing = [d for d in workflow_dir.iterdir() if d.is_dir() and d.name.startswith(config['prefix'])]
+                
+                latest = 0
+                for d in existing:
+                    try:
+                        num = int(d.name.replace(config['prefix'], ''))
+                        latest = max(latest, num)
+                    except ValueError:
+                        continue
+                        
+                current_num = latest + 1
+                target_dir = workflow_dir / f"{config['prefix']}{current_num:02d}"
+
+            if target_dir.exists() and any(target_dir.iterdir()):
+                print(f"Directory already exists and is not empty: {target_dir}")
+                return target_dir
+
+        # ==========================================
+        # EXECUTE TYPST INIT
+        # ==========================================
         print(f"Initializing {workflow_type} in {target_dir}...")
         
-        # 1. Run Typst Native Init
         try:
             subprocess.run(["typst", "init", config['template'], str(target_dir)], check=True)
         except subprocess.CalledProcessError:
             print(f"Error: Could not initialize Typst template '{config['template']}'. Is it installed?")
             return None
 
-        # 2. Generate the Meta file for state injection
-        self.generate_meta_file(target_dir, course_path.name, config, current_num)
+        # Generate the Meta file for state injection
+        self.generate_meta_file(target_dir, course_name, config, current_num)
         print(f"Created successfully: {target_dir}")
         
         return target_dir
@@ -126,30 +141,43 @@ class Scaffolder(AcademicEnvironment):
 # ==========================================
 class Opener(AcademicEnvironment):
     def launch(self, target_path: Path, new_window: bool = False):
+        # 1. Convert to absolute path immediately to avoid chdir bugs
+        target_path = target_path.resolve()
+
         if not target_path.exists():
             raise FileNotFoundError(f"Path does not exist: {target_path}")
 
-        # If passed a directory, look for main.typ
         file_to_open = target_path
+
+        # 2. Smart directory opening logic
         if target_path.is_dir():
-            if (target_path / "main.typ").exists():
-                file_to_open = target_path / "main.typ"
+            candidates = ["main.typ", "main.tex", "README.md"]
+            for candidate in candidates:
+                if (target_path / candidate).exists():
+                    file_to_open = target_path / candidate
+                    break
             else:
-                print(f"No main.typ found in {target_path}. Opening directory instead.")
+                print(f"No obvious main file found in {target_path.name}. Opening directory root.")
 
-        os.chdir(target_path if target_path.is_dir() else target_path.parent)
+        # 3. Change directory safely
+        work_dir = target_path if target_path.is_dir() else target_path.parent
+        os.chdir(work_dir)
 
-        print(f"Opening: {file_to_open}")
+        print(f"Opening: {file_to_open.name}")
         
-        # Build exact Neovim command
+        # Build exact Neovim command using the bulletproof absolute path
         editor_cmd = [self.editor, str(file_to_open)]
         
         if file_to_open.suffix == '.typ':
             sioyek_flag = "new" if new_window else ""
             file_stem = file_to_open.stem
-            # Launch your custom pdf zsh script asynchronously inside nvim
             editor_cmd += [
                 '-c', f'lua vim.fn.jobstart({{"zsh", "-c", "source ~/.zshrc && pdf {sioyek_flag} {file_stem}"}}, {{detach = true}})'
+            ]
+        elif file_to_open.suffix == '.tex':
+            editor_cmd += [
+                '-c', 'set filetype=tex',
+                '-c', 'VimtexCompile'
             ]
 
         subprocess.run(editor_cmd)
@@ -174,8 +202,10 @@ def main():
         help="Initialize a new document/folder (auto-increments numbers)",
         description="Creates a new folder based on your templates and sets up the meta.typ file."
     )
-    init_parser.add_argument('course', help="Course name pattern (e.g., 'parallel', 'crypto')")
+    # We renamed 'course' to 'target' here since it can now be a local folder name
+    init_parser.add_argument('target', help="Course name pattern (e.g., '525') OR local folder name")
     init_parser.add_argument('-t', '--type', choices=WORKFLOWS.keys(), default='hw', help=type_help)
+    init_parser.add_argument('-l', '--local', action='store_true', help="Create a standalone folder in the current directory")
 
     # Open Command
     open_parser = subparsers.add_parser(
@@ -194,7 +224,8 @@ def main():
     try:
         if args.command == 'init':
             scaffolder = Scaffolder()
-            target_dir = scaffolder.init_workflow(args.course, args.type)
+            # Pass args.local so the scaffolder knows which mode to use
+            target_dir = scaffolder.init_workflow(args.target, args.type, args.local)
             if target_dir:
                 Opener().launch(target_dir)
 
