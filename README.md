@@ -32,10 +32,18 @@ Place the `work` script anywhere in your `$PATH` and ensure it is executable. Up
 This script relies on Typst's `@local` namespace.
 On macOS, this is located at `~/Library/Application Support/typst/packages/local`.
 
-Create a directory for your template (e.g., `my-hw/0.1.0/`). You must include a `typst.toml` manifest and a `template/` folder containing your `main.typ` and any support files.
-
-**The `meta.typ` Integration:**
+**Option A: Clone My Templates (Fastest)**
+You can directly clone my pre-configured templates into your local Typst packages directory. 
+```bash
+# Clear the local folder if it exists, then clone the repository
+rm -rf ~/Library/Application\ Support/typst/packages/local
+git clone [https://github.com/mxksm/typst-templates](https://github.com/mxksm/typst-templates) ~/Library/Application\ Support/typst/packages/local
+```
 The script dynamically generates ```hw-num``` and ```course``` variables upon creation. To use them, simply import the ```meta.typ``` file in one of the template files.
+
+**Option B: Create Your Own Templates**
+If you prefer to build your own, create a directory for your template (e.g., `my-hw/0.1.0/`) inside the local Typst packages folder. You must include a `typst.toml` manifest and a `template/` folder containing your `main.typ` and any support files.
+To fully utilize the script, incorporate ```hw-num``` and ```course``` variables defined in the ```meta.typ```.
 
 ---
 
