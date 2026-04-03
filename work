@@ -1,588 +1,211 @@
 #!/usr/bin/env python3
 import os
-import re
 import argparse
-import shutil
 import subprocess
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple
-from datetime import datetime
+from typing import Optional, Dict
 
-class AcademicWorkflow:
+# ==========================================
+# 1. THE REGISTRY (Configuration)
+# ==========================================
+# This makes adding new templates in the future completely frictionless.
+# To add "exams", just add an entry here. No logic changes needed.
+
+WORKFLOWS = {
+    'hw': {
+        'folder_name': 'hw',
+        'prefix': 'hw',
+        'template': '@local/maksim-hw',
+        'auto_increment': True,
+        'default_title': 'Homework'
+    },
+    'pso': {
+        'folder_name': 'pso',
+        'prefix': 'pso',
+        'template': '@local/maksim-pso',
+        'auto_increment': True,
+        'default_title': 'Problem Session'
+    },
+    'notes': {
+        'folder_name': 'notes',
+        'prefix': '',
+        'template': '@local/maksim-notes',
+        'auto_increment': False,
+        'default_title': 'Lecture Notes'
+    }
+}
+
+class AcademicEnvironment:
     def __init__(self):
-        self.config = {
-            'semester_path': Path.home() / "Documents/university/4_year/2_semester",
-            'resume_path': Path.home() / "Documents/resume",
-            'templates': Path.home() / ".templates",
-            'editor': "nvim",
-        }
-        
-        # Define workflow types with their configurations
-        self.workflow_types = {
-            'hw': {
-                'folder_name': 'hw',
-                'format': "hw{:02d}",
-                'title_prefix': "Homework ",
-                'default': True
-            },
-            'pso': {
-                'folder_name': 'pso',
-                'format': "pso{:02d}",
-                'title_prefix': "PSO ",
-                'default': False
-            }
-        }
-        
-        self.file_config = {
-            'latex': {'main': 'main.tex', 'config': 'template.tex', 'support': []},
-            'typst': {'main': 'main.typ', 'config': 'config.typ', 'support': ['environments.typ', 'macros.typ', 'setup.typ']}
-        }
-        
-        # Set default workflow type
-        self.default_workflow = 'hw'
-
-    # ======================================= MAIN ENTRY POINT =======================================
-
-    def run(self):
-        args = self.parse_args()
-        self.handle_commands(args)
-
-    # ======================================= ARGUMENT PARSING =======================================
-
-    def parse_args(self):
-        parser = argparse.ArgumentParser(description="Academic document workflow manager")
-        
-        # Core functionality
-        parser.add_argument('course', nargs='?', help="Course name pattern")
-        parser.add_argument('workflow_number', nargs='?', type=int, 
-                          help="Number for homework/pso")
-        
-        # Operations
-        parser.add_argument('-n', '--new', metavar='COURSE', 
-                          help="Create new homework for course")
-        parser.add_argument('-k', '--kit', metavar='FOLDER', 
-                          help="Create template folder in CWD")
-        parser.add_argument('-d', '--directory', help="Change directory only")
-        parser.add_argument('-o', '--open', help="Change directory and open files")
-        parser.add_argument('-e', '--notes', help="Open the notes folder and edit")
-
-        parser.add_argument(
-            '-wd', '--window',
-            action='store_true',
-            help="Open PDF viewer in a new window (sioyek --new-instance)"
-        )
-        
-        # Workflow type selection
-        workflow_group = parser.add_mutually_exclusive_group()
-        workflow_group.add_argument('-p', '--pso', action='store_true',
-                                  help="Use PSO workflow instead of homework")
-        workflow_group.add_argument('-w', '--hw', action='store_true',
-                                  help="Use homework workflow (default)")
-        
-        # File handling
-        parser.add_argument('-f', '--file', help="Specify exact file to open")
-        parser.add_argument('-t', '--typst', action='store_true', 
-                          help="Force Typst workflow")
-        parser.add_argument('-l', '--latex', action='store_true', 
-                          help="Force LaTeX workflow")
-        
-        # Path resolution
-        parser.add_argument('-s', '--semester', action='store_true', 
-                          help="Use semester path as root directory")
-        parser.add_argument('-r', '--resume', action='store_true',
-                          help="Work with resume documents")
-
-        return parser.parse_args()
-
-    def get_workflow_type(self, args) -> str:
-        """Determine which workflow type to use based on arguments"""
-        if args.pso:
-            return 'pso'
-        elif args.hw:
-            return 'hw'
-        else:
-            return self.default_workflow
-
-    # ======================================= COMMAND HANDLING =======================================
-
-    def handle_commands(self, args):
-        try:
-            if args.resume:
-                self.handle_resume(args)
-            elif args.new:
-                self.create_course_workflow(args.new, args)
-            elif args.kit:
-                self.create_template_kit(args.kit, args)
-            elif args.directory:
-                self.change_directory(args.directory, args)
-            elif args.open:
-                self.open_directory(args.open, args)
-            elif args.notes:
-                self.open_notes(args.notes, args)
-            else:
-                self.handle_default_operation(args)
-
-        except Exception as e:
-            print(f"Error: {str(e)}")
-            exit(1)
-
-    def handle_default_operation(self, args):
-        if args.course:
-            workflow_type = self.get_workflow_type(args)
-            course_path = self.find_course(args.course)
-            workflow_path = self.resolve_workflow_path(course_path, args.workflow_number, workflow_type)
-            self.open_workflow_folder(workflow_path, args)
-        else:
-            self.open_current_directory(args)
-
-    def handle_default_operation(self, args):
-        if args.course:
-            workflow_type = self.get_workflow_type(args)
-            course_path = self.find_course(args.course)
-            workflow_dir = course_path / self.workflow_types[workflow_type]['folder_name']
-
-            # If workflow folder exists but empty, create the first workflow
-            if not workflow_dir.exists() or not any(workflow_dir.iterdir()):
-                print(f"{workflow_type} folder is empty. Creating the first one...")
-                self.create_course_workflow(args.course, args)
-                return
-
-            workflow_path = self.resolve_workflow_path(course_path, args.workflow_number, workflow_type)
-            self.open_workflow_folder(workflow_path, args)
-        else:
-            self.open_current_directory(args)
-
-    # ======================================= HELPER FUNCTIONS =======================================
-
-    def update_course_in_file(self, content: str, course_name: str) -> str:
-        """Update course name in file content consistently"""
-        pattern = r'(#let course\s*=\s*")[^"]*(")'
-        replacement = fr'\g<1>{course_name} \2'  # Keep the space
-        return re.sub(pattern, replacement, content)
-
-    def format_course_name(self, raw_course_name: str) -> str:
-        """Format course name consistently: remove TA- prefix and uppercase"""
-        if raw_course_name.lower().startswith('ta-'):
-            course_name = raw_course_name[3:].upper()  # Remove "TA-" and uppercase
-        else:
-            course_name = raw_course_name.upper()
-        return course_name
-
-    def update_course_in_config_file(self, config_file: Path, raw_course_name: str) -> bool:
-        """Update course name in a config file and return True if changed"""
-        if not config_file.exists():
-            return False
-        
-        with open(config_file, 'r') as f:
-            content = f.read()
-        
-        course_name = self.format_course_name(raw_course_name)
-        new_content = self.update_course_in_file(content, course_name)
-        
-        if new_content != content:
-            with open(config_file, 'w') as f:
-                f.write(new_content)
-            print(f"Updated course name to: {course_name}")
-            return True
-        
-        return False
-
-    def get_language(self, args) -> str:
-        """Determine which language to use based on arguments"""
-        if args.typst:
-            return 'typst'
-        if args.latex:
-            return 'latex'
-        return 'typst'
-
-    def prompt_choice(self, options: List[Path]) -> Path:
-        """Prompt user to choose from multiple options"""
-        print("Multiple matches found:")
-        for i, path in enumerate(options, 1):
-            print(f"{i}: {path.name}")
-        
-        while True:
-            choice = input("Enter number: ")
-            if choice.isdigit() and 0 < int(choice) <= len(options):
-                return options[int(choice)-1]
-            print("Invalid choice")
-
-    # ======================================= PATH RESOLUTION =======================================
-
-    def resolve_base_path(self, args) -> Path:
-        """Resolve the base path based on arguments"""
-        if args.semester:
-            return self.config['semester_path']
-        return Path.cwd()
+        self.semester_path = Path.home() / "Documents/university/4_year/2_semester"
+        self.editor = "nvim"
 
     def find_course(self, pattern: str) -> Path:
         """Find a course folder by pattern matching"""
-        courses = [d for d in self.config['semester_path'].iterdir() if d.is_dir()]
+        if not self.semester_path.exists():
+            raise FileNotFoundError(f"Semester path not found: {self.semester_path}")
+            
+        courses = [d for d in self.semester_path.iterdir() if d.is_dir()]
         matches = [c for c in courses if pattern.lower() in c.name.lower()]
         
         if not matches:
             raise FileNotFoundError(f"No course matching '{pattern}'")
         if len(matches) > 1:
-            return self.prompt_choice(matches)
+            # For now, just return the first match to keep it simple, 
+            # we can add the interactive prompt back later if needed.
+            print(f"Multiple matches found, using: {matches[0].name}")
         return matches[0]
 
-    def resolve_workflow_path(self, course_path: Path, 
-                            workflow_number: Optional[int], 
-                            workflow_type: str) -> Path:
-        """Resolve path for either homework or pso"""
-        config = self.workflow_types[workflow_type]
+# ==========================================
+# 2. THE SCAFFOLDER (State & File Creation)
+# ==========================================
+class Scaffolder(AcademicEnvironment):
+    def generate_meta_file(self, target_dir: Path, course_name: str, config: Dict, number: int = None):
+        """Creates a meta.typ file so Typst templates know their context without regex"""
+        meta_path = target_dir / "meta.typ"
+        
+        # Format course name (e.g., removing TA-)
+        formatted_course = course_name[3:].upper() if course_name.lower().startswith('ta-') else course_name.upper()
+        
+        title = f"{config['default_title']} {number}" if number else config['default_title']
+        
+        with open(meta_path, 'w') as f:
+            f.write(f'#let course_name = "{formatted_course}"\n')
+            f.write(f'#let doc_title = "{title}"\n')
+            if number is not None:
+                f.write(f'#let doc_number = {number}\n')
+
+    def init_workflow(self, course_pattern: str, workflow_type: str):
+        config = WORKFLOWS[workflow_type]
+        course_path = self.find_course(course_pattern)
         workflow_dir = course_path / config['folder_name']
+        workflow_dir.mkdir(exist_ok=True)
 
-        if not workflow_dir.exists():
-            workflow_dir.mkdir()
+        target_dir = workflow_dir
+        current_num = None
+
+        if config['auto_increment']:
+            # Find the latest number
+            existing = [d for d in workflow_dir.iterdir() if d.is_dir() and d.name.startswith(config['prefix'])]
+            
+            latest = 0
+            for d in existing:
+                try:
+                    num = int(d.name.replace(config['prefix'], ''))
+                    latest = max(latest, num)
+                except ValueError:
+                    continue
+                    
+            current_num = latest + 1
+            target_dir = workflow_dir / f"{config['prefix']}{current_num:02d}"
+
+        if target_dir.exists():
+            print(f"Directory already exists: {target_dir}")
+            return target_dir
+
+        print(f"Initializing {workflow_type} in {target_dir}...")
         
-        if workflow_number is not None:
-            return workflow_dir / config['format'].format(workflow_number)
+        # 1. Run Typst Native Init
+        try:
+            subprocess.run(["typst", "init", config['template'], str(target_dir)], check=True)
+        except subprocess.CalledProcessError:
+            print(f"Error: Could not initialize Typst template '{config['template']}'. Is it installed?")
+            return None
+
+        # 2. Generate the Meta file for state injection
+        self.generate_meta_file(target_dir, course_path.name, config, current_num)
+        print(f"Created successfully: {target_dir}")
         
-        existing = sorted(workflow_dir.glob(f"{config['folder_name']}*"), 
-                         key=lambda p: self.workflow_sort_key(p, workflow_type))
-        if not existing:
-            raise FileNotFoundError(f"No {workflow_type} folders found")
-        return existing[-1]
+        return target_dir
 
-    def workflow_sort_key(self, path: Path, workflow_type: str) -> int:
-        """Extract number from hw/pso folder names"""
-        config = self.workflow_types[workflow_type]
-        folder_pattern = config['folder_name']
-        format_pattern = config['format'].replace('{:02d}', r'(\d+)')
-        match = re.search(format_pattern, path.name)
-        return int(match.group(1)) if match else 0
+# ==========================================
+# 3. THE OPENER (Execution & Environment)
+# ==========================================
+class Opener(AcademicEnvironment):
+    def launch(self, target_path: Path, new_window: bool = False):
+        if not target_path.exists():
+            raise FileNotFoundError(f"Path does not exist: {target_path}")
 
-    # ======================================= FILE OPERATIONS =======================================
+        # If passed a directory, look for main.typ
+        file_to_open = target_path
+        if target_path.is_dir():
+            if (target_path / "main.typ").exists():
+                file_to_open = target_path / "main.typ"
+            else:
+                print(f"No main.typ found in {target_path}. Opening directory instead.")
 
-    def resolve_file(self, path: Path, args) -> Path:
-        """Resolve which file to open in a directory"""
-        if args.file:
-            return path / args.file
+        os.chdir(target_path if target_path.is_dir() else target_path.parent)
+
+        print(f"Opening: {file_to_open}")
         
-        # Special handling for notes folder - look for main.typ first
-        if path.name == "notes":
-            main_typ = path / "main.typ"
-            if main_typ.exists():
-                return main_typ
-
-        # Check forced template type first
-        if args.typst or args.latex:
-            language = 'typst' if args.typst else 'latex'
-            for f in [self.file_config[language]['main'],
-                      self.file_config[language]['config']]:
-                candidate = path / f
-                if candidate.exists():
-                    return candidate
+        # Build exact Neovim command
+        editor_cmd = [self.editor, str(file_to_open)]
         
-        # Auto-detect
-        for ext in ['typ', 'tex']:
-            for fname in ['main', 'content', 'template', 'config']:
-                candidate = path / f"{fname}.{ext}"
-                if candidate.exists():
-                    return candidate
-        
-        # Fallback to any existing file
-        for ext in ['typ', 'tex']:
-            files = list(path.glob(f"*.{ext}"))
-            if files:
-                return files[0]
-        
-        raise FileNotFoundError(f"No valid files found in {path}")
-
-    def open_editor(self, file_path: Path, args=None):
-        """Opens file in Neovim with exact command structure from original script"""
-        editor_cmd = [self.config['editor'], str(file_path)]
-        file_stem = file_path.stem  # Gets filename without extension
-
-        if file_path.suffix == '.typ':
-            sioyek_flag = "new" if args and args.window else ""
+        if file_to_open.suffix == '.typ':
+            sioyek_flag = "new" if new_window else ""
+            file_stem = file_to_open.stem
+            # Launch your custom pdf zsh script asynchronously inside nvim
             editor_cmd += [
                 '-c', f'lua vim.fn.jobstart({{"zsh", "-c", "source ~/.zshrc && pdf {sioyek_flag} {file_stem}"}}, {{detach = true}})'
-            ]
-        if file_path.suffix == '.tex':
-            editor_cmd += [
-                '-c', 'set filetype=tex',
-                '-c', 'VimtexCompile'
             ]
 
         subprocess.run(editor_cmd)
 
-    def get_compile_command(self, file_path: Path) -> List[str]:
-        """Get the appropriate compile command for a file"""
-        if file_path.suffix == '.typ':
-            #return ["typst", "watch", file_path.name]
-            now = datetime.now().strftime("%Y %m %d %H %M %S")
-            return [
-                "typst",
-                "watch",
-                file_path.name,
-                "--input",
-                f"now={now}",
-            ]
+# ==========================================
+# CLI ENTRY POINT
+# ==========================================
+def main():
+    parser = argparse.ArgumentParser(description="Academic Document Workflow Manager")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-        return ["latexmk", "-pdf", "-interaction=nonstopmode", file_path.name]
+    # Init Command
+    init_parser = subparsers.add_parser('init', help="Initialize a new document/folder")
+    init_parser.add_argument('course', help="Course name pattern (e.g., 'parallel')")
+    init_parser.add_argument('-t', '--type', choices=WORKFLOWS.keys(), default='hw', help="Type of workflow to create")
 
-    # ======================================= DIRECTORY NAVIGATION =======================================
+    # Open Command
+    open_parser = subparsers.add_parser('open', help="Open an existing document/folder")
+    open_parser.add_argument('target', help="Course pattern OR direct path")
+    open_parser.add_argument('-t', '--type', choices=WORKFLOWS.keys(), default='hw', help="Workflow type to open (if using course pattern)")
+    open_parser.add_argument('-wd', '--window', action='store_true', help="Open PDF viewer in a new window")
 
-    def open_current_directory(self, args):
-        """Handle opening files in current working directory"""
-        current_dir = Path.cwd()
-        try:
-            file_to_open = self.resolve_file(current_dir, args)
-            self.open_editor(file_to_open, args)
-        except FileNotFoundError as e:
-            print(f"Error: {str(e)}")
-            # Optionally open editor anyway
-            self.open_editor(current_dir, args)
+    args = parser.parse_args()
 
-    def open_workflow_folder(self, workflow_path: Path, args):
-        """Open a homework/pso folder and its main file"""
-        os.chdir(workflow_path)
-        file_to_open = self.resolve_file(workflow_path, args)
-        self.open_editor(file_to_open, args)
+    try:
+        if args.command == 'init':
+            scaffolder = Scaffolder()
+            target_dir = scaffolder.init_workflow(args.course, args.type)
+            if target_dir:
+                # Automatically open after creating
+                Opener().launch(target_dir)
 
-    def open_directory(self, path: str, args):
-        """Open a directory and optionally a specific file"""
-        base = self.config['semester_path'] if args.semester else Path.cwd()
-        target = base / path
-        os.chdir(target)
-        
-        if args.file:
-            self.open_editor(target / args.file, args)
-        else:
-            self.open_workflow_folder(target, args)
-
-    def change_directory(self, path: str, args):
-        """Change directory only"""
-        base = self.config['semester_path'] if args.semester else Path.cwd()
-        os.chdir(base / path)
-
-    # ======================================= RESUME HANDLING =======================================
-
-    def handle_resume(self, args):
-        """Handle resume-related operations"""
-        target = self.config['resume_path']
-        if args.file:
-            self.open_editor(target / args.file, args)
-        else:
-            self.open_directory(target, args)
-
-    # ======================================= WORKFLOW CREATION =======================================
-
-    def create_course_workflow(self, course_pattern: str, args):
-        """Create new homework or pso for a course"""
-        workflow_type = self.get_workflow_type(args)
-        course_path = self.find_course(course_pattern)
-        config = self.workflow_types[workflow_type]
-        
-        workflow_dir = course_path / config['folder_name']
-        
-        # Find latest workflow number
-        latest = max((self.workflow_sort_key(p, workflow_type) 
-                     for p in workflow_dir.glob(f"{config['folder_name']}*")), 
-                    default=0)
-        # change above line to default = -1 to make the homework start at 0
-        new_num = latest + 1
-        new_path = workflow_dir / config['format'].format(new_num)
-        
-        # Get previous workflow path if exists
-        previous_path = None
-        if latest >= 0:
-            previous_path = workflow_dir / config['format'].format(latest)
-        
-        language = self.detect_language(course_path, workflow_type) or self.get_language(args)
-        self.create_template_files(new_path, language, previous_path)
-        self.update_workflow_number(new_path, new_num, language, workflow_type)
-        
-        print(f"Created new {workflow_type}: {new_path}")
-        os.chdir(new_path)
-        main_file = new_path / self.file_config[language]['main']
-        self.open_editor(main_file, args)
-
-    def update_workflow_number(self, workflow_path: Path, workflow_num: int, 
-                             language: str, workflow_type: str):
-        """Updates homework/pso number in the config file"""
-        config = self.workflow_types[workflow_type]
-        config_file = workflow_path / self.file_config[language]['config']
-        
-        if not config_file.exists():
-            return
-        
-        # Get plain number without leading zeros
-        display_num = str(workflow_num)
-        
-        with open(config_file, 'r') as f:
-            content = f.read()
-        
-        # Create the correct title
-        new_title = f'{config["title_prefix"]}{display_num}'
-        
-        # For Typst files
-        if language == 'typst':
-            # Find #let title = "..." and replace everything between quotes
-            pattern = r'(#let title\s*=\s*")[^"]*(")'
-            replacement = fr'\g<1>{new_title}\2'
-            new_content = re.sub(pattern, replacement, content)
-            
-        else:  # For LaTeX files
-            # Find \title{...} and replace everything between braces
-            pattern = r'(\\title\{)[^}]*(\})'
-            replacement = fr'\g<1>{new_title}\2'
-            new_content = re.sub(pattern, replacement, content)
-        
-        if new_content == content:
-            print(f"Warning: updating {workflow_type} number did not go through")
-        else:
-            print(f"Updated title to: {new_title}")
-        
-        # Update course name in typst config (if typst)
-        if language == 'typst':
-            raw_course_name = workflow_path.parent.parent.name
-            course_name = self.format_course_name(raw_course_name)
-            new_content = self.update_course_in_file(new_content, course_name)
-    
-        # Write the updated content back to the file
-        with open(config_file, 'w') as f:
-            f.write(new_content)
-
-    def detect_language(self, course_path: Path, workflow_type: str) -> Optional[str]:
-        """Detect language from existing workflows"""
-        config = self.workflow_types[workflow_type]
-        workflow_dir = course_path / config['folder_name']
-        
-        if not workflow_dir.exists():
-            return None
-            
-        # Look for existing workflows in reverse order
-        workflows = sorted(workflow_dir.glob(f"{config['folder_name']}*"), 
-                          key=lambda p: self.workflow_sort_key(p, workflow_type), 
-                          reverse=True)
-        
-        for p in workflows:
-            if (p / "main.typ").exists():
-                return 'typst'
-            if (p / "main.tex").exists():
-                return 'latex'
-        return None
-
-    # ======================================= TEMPLATE MANAGEMENT =======================================
-
-    def create_template_kit(self, folder_name: str, args):
-        """Create a template kit in the current directory"""
-        target = Path.cwd() / folder_name
-        target.mkdir(exist_ok=True)
-        
-        language = self.get_language(args)
-        self.create_template_files(target, language)
-        print(f"Created template kit: {target}")
-
-    def create_template_files(self, target: Path, language: str, previous_path: Path = None):
-        """Create template files for a workflow"""
-        target.mkdir(exist_ok=True, parents=True)
-        
-        # get folder of template files
-        templates_folder = self.config['templates']
-        if language == 'typst':
-            templates_folder = templates_folder / 'typst'
-        else:
-            templates_folder = templates_folder / 'latex'
-
-        # Handle main file - copy from previous if available
-        main_file_name = self.file_config[language]['main']
-        if previous_path and (previous_path / main_file_name).exists():
-            main_src = previous_path / main_file_name
-        else:
-            main_src = templates_folder / main_file_name
-
-        main_dest = target / main_file_name
-        if not main_dest.exists() and main_src.exists():
-            shutil.copy(main_src, main_dest)
-            
-            # trim file after === content ===
-            with open(main_dest, "r") as f:
-                lines = f.readlines()
-
-            marker = ["// =======\n", "// CONTENT\n", "// =======\n"]
-            start = 0
-            for i in range(len(lines)):
-                if lines[i:i+3] == marker:
-                    start = i + 3
-                    break
-
-            if start == 0:
-                main_src = templates_folder / main_file_name
-                shutil.copy(main_src, main_dest)
+        elif args.command == 'open':
+            opener = Opener()
+            # Check if target is a direct path first
+            direct_path = Path(args.target)
+            if direct_path.exists():
+                opener.launch(direct_path, args.window)
             else:
-                with open(main_dest, "w") as f:
-                    f.writelines(lines[:start])
+                # Treat as a course pattern
+                env = AcademicEnvironment()
+                course_path = env.find_course(args.target)
+                config = WORKFLOWS[args.type]
+                
+                workflow_dir = course_path / config['folder_name']
+                
+                if config['auto_increment']:
+                    # Find latest folder
+                    existing = sorted(workflow_dir.glob(f"{config['prefix']}*"))
+                    if not existing:
+                        raise FileNotFoundError(f"No {args.type} folders found in {course_path.name}")
+                    target = existing[-1]
+                else:
+                    target = workflow_dir
+                    
+                opener.launch(target, args.window)
 
-        # Handle template file - copy from previous if available
-        config_file_name = self.file_config[language]['config']
-        if previous_path and (previous_path / config_file_name).exists():
-            config_src = previous_path / config_file_name
-        else:
-            config_src = templates_folder / config_file_name
-            
-        config_dest = target / config_file_name
-        if not config_dest.exists() and config_src.exists():
-            shutil.copy(config_src, config_dest)
-
-        # Copy support files
-        for support_file_name in self.file_config[language]['support']:
-            if previous_path and (previous_path / support_file_name).exists():
-                support_src = previous_path / support_file_name
-            else:
-                support_src = templates_folder / support_file_name
-
-            support_dest = target / support_file_name
-            if not support_dest.exists() and support_src.exists():
-                shutil.copy(support_src, support_dest)
-
-    # ======================================= NOTES HANDLING =======================================
-
-    def create_notes_folder(self, notes_path: Path, course_name: str):
-        """Create a new notes folder with template files"""
-        notes_path.mkdir(parents=True, exist_ok=True)
-        
-        # Get the templates folder
-        templates_folder = self.config['templates'] / 'typst'
-        
-        # Define the note-specific files to copy
-        note_files = [
-            ('notes-config.typ', 'config.typ'),
-            ('notes-environments.typ', 'environments.typ'),
-            ('notes-macros.typ', 'macros.typ'),
-            ('notes-main.typ', 'main.typ'),
-            ('notes-setup.typ', 'setup.typ')
-        ]
-        
-        # Copy each note file, removing the 'notes-' prefix
-        for src_name, dest_name in note_files:
-            src_path = templates_folder / src_name
-            dest_path = notes_path / dest_name
-            
-            if src_path.exists():
-                shutil.copy(src_path, dest_path)
-                print(f"Created {dest_name}")
-            else:
-                print(f"Warning: Template {src_name} not found in {templates_folder}")
-        
-        # Update the course name in config.typ
-        config_file = notes_path / "config.typ"
-        self.update_course_in_config_file(config_file, course_name)
-
-    def open_notes(self, course_pattern: str, args):
-        """Open the notes folder for a course, create it if it doesn't exist"""
-        course_path = self.find_course(course_pattern)
-        notes_path = course_path / "notes"
-        
-        if not notes_path.exists():
-            print(f"Notes folder doesn't exist. Creating it...")
-            self.create_notes_folder(notes_path, course_path.name)
-        
-        self.open_workflow_folder(notes_path, args)
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    workflow = AcademicWorkflow()
-    workflow.run()
+    main()
