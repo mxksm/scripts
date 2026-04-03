@@ -2,17 +2,78 @@
 
 ## pdf
 
-The ```pdf.zsh``` script helps open pdf files using sioyek, appends ```.pdf``` at the end so it doesn't have to be specified, and opening the ```main.pdf``` file by default if none specified.
+The ```pdf.zsh``` script helps open pdf files using Sioyek: appends ```.pdf``` at the end so it doesn't have to be specified, opens the ```main.pdf``` file by default if none specified.
 
 ## work
 
-The ```work``` is an extensive script for writing homeworks/notes in latex/typst for specific courses.
-Use ```work --help``` to see all options.
+`work` is a CLI written in Python designed to eliminate the friction of managing academic documents.
+It automates the scaffolding, state-tracking, and launching of Typst projects (homework, problem sessions, and lecture notes) so you can focus entirely on the content.
 
-Example Usage:
-+ ```git clone https://github.com/mxksm/templates.git ~/.templates```
-+ ```mkdir -p university/4_year/2_semester/cs525```
-+ Now using ```work -n cs525``` (or a substring of the course name ```work -n 525```) will automatically create a new latest homework folder, depending on the current latest homework, and also update the title to match the homework number.
+It is built specifically for a terminal-centric workflow, seamlessly integrating with **Neovim**, **Sioyek**, and **Typst's native local package manager**.
 
-Future Work:
-+ Switch to using typst native templates instead of manually copying.
+## Features
+
+* **Smart Scaffolding (`init`):** Automatically locates course directories using fuzzy pattern matching (e.g., `525` finds `CS525`).
+* **State-Aware Auto-Incrementing:** Intelligently checks previous assignments and creates the next logical folder (e.g., finds `hw02`, creates `hw03`).
+* **Native Typst Templates:** Fully drops legacy file-copying and regex-parsing in favor of `typst init @local/...` for robust, multi-file template generation.
+* **Regex-Free Variable Injection:** Dynamically generates a `meta.typ` file during initialization to pass metadata (course names, homework numbers).
+* **Universal Opener (`open`):** A decoupled execution environment that can open specific course workflows or any random directory on your machine, instantly launching Neovim, compiling the document, and opening Sioyek in the background.
+* **Highly Extensible:** Adding a new document type (like "exams" or "research papers") can be done by adding a new entry to the `WORKFLOWS` dictionary and creating new templates.
+
+---
+
+## Setup & Installation
+
+### 1. Configure the Python Script
+
+Place the `work` script anywhere in your `$PATH` and ensure it is executable. Update the `semester_path` variable inside the script to point to your current university directory.
+
+### 2. Set Up Local Typst Templates
+This script relies on Typst's `@local` namespace.
+On macOS, this is located at `~/Library/Application Support/typst/packages/local`.
+
+Create a directory for your template (e.g., `my-hw/0.1.0/`). You must include a `typst.toml` manifest and a `template/` folder containing your `main.typ` and any support files.
+
+**The `meta.typ` Integration:**
+The script dynamically generates ```hw-num``` and ```course``` variables upon creation. To use them, simply import the ```meta.typ``` file in one of the template files.
+
+---
+
+## Usage
+
+### Scaffold a New Project (`init`)
+Creates a new project directory, pulls your Typst template, injects the metadata, and instantly opens the environment.
+
+```bash
+# Create the next homework for a course matching "525"
+work init 525
+
+# Create a specific workflow type (hw, pso, notes)
+work init -t notes 580
+```
+
+### Open an Existing Project (`open`)
+Intelligently finds the target, opens the `main.typ` in Neovim, and fires off a background Zsh compilation/PDF job.
+
+```bash
+# Open the latest homework for CS525
+work open 525
+
+# Open the lecture notes for CS581
+work open -t notes 581
+
+# Open the current directory as a project
+work open .
+
+# Open a specific path and open a new window of Sioyek
+work open -wd ~/Downloads/some-repo
+```
+
+### Help
+Use the `-h` flag to see dynamically generated help text based on your current configured workflows:
+
+```bash
+work -h
+work init -h
+work open -h
+```
