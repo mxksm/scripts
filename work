@@ -15,21 +15,21 @@ WORKFLOWS = {
     'hw': {
         'folder_name': 'hw',
         'prefix': 'hw',
-        'template': '@local/maksim-hw',
+        'template': '@local/my-hw',
         'auto_increment': True,
         'default_title': 'Homework'
     },
     'pso': {
         'folder_name': 'pso',
         'prefix': 'pso',
-        'template': '@local/maksim-pso',
+        'template': '@local/my-pso',
         'auto_increment': True,
         'default_title': 'Problem Session'
     },
     'notes': {
         'folder_name': 'notes',
         'prefix': '',
-        'template': '@local/maksim-notes',
+        'template': '@local/my-lec-notes',
         'auto_increment': False,
         'default_title': 'Lecture Notes'
     }
@@ -37,7 +37,8 @@ WORKFLOWS = {
 
 class AcademicEnvironment:
     def __init__(self):
-        self.semester_path = Path.home() / "Documents/university/4_year/2_semester"
+        #self.semester_path = Path.home() / "Documents/university/4_year/2_semester"
+        self.semester_path = Path.home() / "Documents/university/5_year/1_semester"
         self.editor = "nvim"
 
     def find_course(self, pattern: str) -> Path:
@@ -67,24 +68,24 @@ class Scaffolder(AcademicEnvironment):
         # Format course name (e.g., removing TA-)
         formatted_course = course_name[3:].upper() if course_name.lower().startswith('ta-') else course_name.upper()
         
-        title = f"{config['default_title']} {number}" if number else config['default_title']
-        
         with open(meta_path, 'w') as f:
-            f.write(f'#let course_name = "{formatted_course}"\n')
-            f.write(f'#let doc_title = "{title}"\n')
+            f.write(f'#let course = "{formatted_course}"\n')
             if number is not None:
-                f.write(f'#let doc_number = {number}\n')
+                # We use hw_num here since your template expects it!
+                f.write(f'#let hw_num = {number}\n')
 
     def init_workflow(self, course_pattern: str, workflow_type: str):
         config = WORKFLOWS[workflow_type]
         course_path = self.find_course(course_pattern)
         workflow_dir = course_path / config['folder_name']
-        workflow_dir.mkdir(exist_ok=True)
 
         target_dir = workflow_dir
         current_num = None
 
         if config['auto_increment']:
+            # We only need to ensure the parent directory exists if we are searching it for previous numbers
+            workflow_dir.mkdir(exist_ok=True)
+            
             # Find the latest number
             existing = [d for d in workflow_dir.iterdir() if d.is_dir() and d.name.startswith(config['prefix'])]
             
@@ -99,8 +100,10 @@ class Scaffolder(AcademicEnvironment):
             current_num = latest + 1
             target_dir = workflow_dir / f"{config['prefix']}{current_num:02d}"
 
-        if target_dir.exists():
-            print(f"Directory already exists: {target_dir}")
+        # Smarter check: Only skip if the folder exists AND actually has files in it.
+        # This allows typst init to populate an existing but empty directory.
+        if target_dir.exists() and any(target_dir.iterdir()):
+            print(f"Directory already exists and is not empty: {target_dir}")
             return target_dir
 
         print(f"Initializing {workflow_type} in {target_dir}...")
@@ -155,19 +158,36 @@ class Opener(AcademicEnvironment):
 # CLI ENTRY POINT
 # ==========================================
 def main():
-    parser = argparse.ArgumentParser(description="Academic Document Workflow Manager")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    # Dynamically generate the help text for workflow types
+    type_desc = ", ".join([f"'{k}' ({v['default_title']})" for k, v in WORKFLOWS.items()])
+    type_help = f"Specify the workflow type: {type_desc}. (Default: 'hw')"
+
+    parser = argparse.ArgumentParser(
+        description="Academic Document Workflow Manager",
+        epilog="Example: 'work init parallel' -> Creates hw01 in the parallel course folder."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True, title="Available commands")
 
     # Init Command
-    init_parser = subparsers.add_parser('init', help="Initialize a new document/folder")
-    init_parser.add_argument('course', help="Course name pattern (e.g., 'parallel')")
-    init_parser.add_argument('-t', '--type', choices=WORKFLOWS.keys(), default='hw', help="Type of workflow to create")
+    init_parser = subparsers.add_parser(
+        'init', 
+        help="Initialize a new document/folder (auto-increments numbers)",
+        description="Creates a new folder based on your templates and sets up the meta.typ file."
+    )
+    init_parser.add_argument('course', help="Course name pattern (e.g., 'parallel', 'crypto')")
+    init_parser.add_argument('-t', '--type', choices=WORKFLOWS.keys(), default='hw', help=type_help)
 
     # Open Command
-    open_parser = subparsers.add_parser('open', help="Open an existing document/folder")
-    open_parser.add_argument('target', help="Course pattern OR direct path")
-    open_parser.add_argument('-t', '--type', choices=WORKFLOWS.keys(), default='hw', help="Workflow type to open (if using course pattern)")
-    open_parser.add_argument('-wd', '--window', action='store_true', help="Open PDF viewer in a new window")
+    open_parser = subparsers.add_parser(
+        'open', 
+        help="Open an existing document/folder and launch environment",
+        description="Opens a file in Neovim and launches Sioyek + background compiler."
+    )
+    open_parser.add_argument('target', help="Course pattern (e.g., 'parallel') OR direct file path (e.g., '.')")
+    open_parser.add_argument('-t', '--type', choices=WORKFLOWS.keys(), default='hw', 
+                             help="Workflow type to open if using a course pattern. Ignored for direct paths.")
+    open_parser.add_argument('-wd', '--window', action='store_true', 
+                             help="Open Sioyek PDF viewer in a new, separate window")
 
     args = parser.parse_args()
 
@@ -176,25 +196,28 @@ def main():
             scaffolder = Scaffolder()
             target_dir = scaffolder.init_workflow(args.course, args.type)
             if target_dir:
-                # Automatically open after creating
                 Opener().launch(target_dir)
 
         elif args.command == 'open':
             opener = Opener()
-            # Check if target is a direct path first
             direct_path = Path(args.target)
+            
+            # Smaarter directory opening logic
             if direct_path.exists():
-                opener.launch(direct_path, args.window)
+                file_to_open = direct_path
+                if direct_path.is_dir():
+                    for candidate in ["main.typ", "main.tex", "README.md"]:
+                        if (direct_path / candidate).exists():
+                            file_to_open = direct_path / candidate
+                            break
+                opener.launch(file_to_open, args.window)
             else:
-                # Treat as a course pattern
                 env = AcademicEnvironment()
                 course_path = env.find_course(args.target)
                 config = WORKFLOWS[args.type]
-                
                 workflow_dir = course_path / config['folder_name']
                 
                 if config['auto_increment']:
-                    # Find latest folder
                     existing = sorted(workflow_dir.glob(f"{config['prefix']}*"))
                     if not existing:
                         raise FileNotFoundError(f"No {args.type} folders found in {course_path.name}")
