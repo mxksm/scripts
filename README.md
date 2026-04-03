@@ -7,7 +7,7 @@ The ```pdf.zsh``` script helps open pdf files using Sioyek: appends ```.pdf``` a
 ## work
 
 `work` is a CLI written in Python designed to eliminate the friction of managing academic documents.
-It automates the scaffolding, state-tracking, and launching of Typst projects (homework, problem sessions, and lecture notes) so you can focus entirely on the content.
+It automates the scaffolding, state-tracking, and launching of Typst projects (homework, problem sessions, and lecture notes), and only launching for latex.
 
 It is built specifically for a terminal-centric workflow, seamlessly integrating with **Neovim**, **Sioyek**, and **Typst's native local package manager**.
 
