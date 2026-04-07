@@ -214,6 +214,9 @@ def main():
         description="Opens a file in Neovim and launches Sioyek + background compiler."
     )
     open_parser.add_argument('target', help="Course pattern (e.g., 'parallel') OR direct file path (e.g., '.')")
+    # Add this line right here:
+    open_parser.add_argument('num', nargs='?', type=int, help="Specific assignment number to open (e.g., 3 for hw03)")
+    
     open_parser.add_argument('-t', '--type', choices=WORKFLOWS.keys(), default='hw', 
                              help="Workflow type to open if using a course pattern. Ignored for direct paths.")
     open_parser.add_argument('-wd', '--window', action='store_true', 
@@ -233,7 +236,6 @@ def main():
             opener = Opener()
             direct_path = Path(args.target)
             
-            # Smaarter directory opening logic
             if direct_path.exists():
                 file_to_open = direct_path
                 if direct_path.is_dir():
@@ -249,10 +251,15 @@ def main():
                 workflow_dir = course_path / config['folder_name']
                 
                 if config['auto_increment']:
-                    existing = sorted(workflow_dir.glob(f"{config['prefix']}*"))
-                    if not existing:
-                        raise FileNotFoundError(f"No {args.type} folders found in {course_path.name}")
-                    target = existing[-1]
+                    # CHECK FOR SPECIFIC NUMBER HERE
+                    if args.num is not None:
+                        # Auto-pads the number with a leading zero (e.g., 3 -> 03)
+                        target = workflow_dir / f"{config['prefix']}{args.num:02d}"
+                    else:
+                        existing = sorted(workflow_dir.glob(f"{config['prefix']}*"))
+                        if not existing:
+                            raise FileNotFoundError(f"No {args.type} folders found in {course_path.name}")
+                        target = existing[-1]
                 else:
                     target = workflow_dir
                     
