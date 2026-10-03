@@ -37,7 +37,7 @@ WORKFLOWS = {
 
 class AcademicEnvironment:
     def __init__(self):
-        self.semester_path = Path.home() / "Documents/university/4_year/summer"
+        self.semester_path = Path.home() / "Documents/university/5_year/1_semester"
         self.editor = "nvim"
 
     def find_course(self, pattern: str) -> Path:
